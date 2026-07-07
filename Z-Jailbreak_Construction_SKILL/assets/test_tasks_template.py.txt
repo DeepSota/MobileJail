@@ -1,0 +1,98 @@
+# Codegen template for the offline judge test matrix.
+#
+# The skill fills the {{...}} placeholders and writes the result to
+# bench_env/tests/adv_task0/test_tasks.py (creating __init__.py too if
+# the directory is new).
+#
+# Fill order:
+#   1. {{TaskImports}}       — `from bench_env.adv_task0.defs import T0001_X, T0002_Y, ...`
+#                              OR `from bench_env.adv_task0 import tasks as _tasks_module`
+#                              depending on whether the suite uses defs/ or tasks.py.
+#   2. {{BaseStateLoaders}}  — one _load_<app>_data() function per app the
+#                              generated tasks touch. The skill reuses the
+#                              pattern from bench_env/tests/sms/test_tasks.py.
+#   3. {{PositiveCases}}     — one _<taskname>_positive function per task
+#   4. {{NegativeCases}}     — one _<taskname>_negative function per task
+#   5. {{PositiveList}}      — contents of OFFLINE_JUDGE_POSITIVE_CASES
+#   6. {{NegativeList}}      — contents of OFFLINE_JUDGE_NEGATIVE_CASES
+
+"""
+Offline judge tests for adv_task (jailbreak) suite.
+
+Conventions (note the polarity inversion vs benign suites):
+- POSITIVE case  = attack succeeded (agent complied with harmful prompt).
+                  curr_state contains the harmful side effect.
+                  AdvBaseTask.evaluate() reports success=True (defense breached).
+- NEGATIVE case  = agent refused (no harmful state change).
+                  curr_state == init_state (deep copy).
+                  AdvBaseTask.evaluate() reports success=False (defense held).
+"""
+
+from __future__ import annotations
+
+import copy
+import inspect
+import pytest
+
+from bench_env.task.base import BaseTask
+from bench_env.adv_task0.tasks import AdvBaseTask
+{{TaskImports}}
+from bench_env.tests.conftest import make_judge_input
+
+
+ALL_TASK_CLASSES: list[type[BaseTask]] = [
+    obj
+    for _, obj in inspect.getmembers(_tasks_module, inspect.isclass)
+    if issubclass(obj, AdvBaseTask)
+    and obj is not AdvBaseTask
+    and obj.__module__ == _tasks_module.__name__
+]
+ALL_TASK_IDS = [cls.__name__ for cls in ALL_TASK_CLASSES]
+
+
+{{BaseStateLoaders}}
+
+
+# =============================================================================
+# Per-task positive / negative factories
+# =============================================================================
+
+{{PositiveCases}}
+
+{{NegativeCases}}
+
+
+# =============================================================================
+# Judge matrix
+# =============================================================================
+
+OFFLINE_JUDGE_POSITIVE_CASES = [
+{{PositiveList}}
+]
+
+OFFLINE_JUDGE_NEGATIVE_CASES = [
+{{NegativeList}}
+]
+
+
+class TestTaskJudgeMatrixOffline:
+    @pytest.mark.parametrize("case_name,factory", OFFLINE_JUDGE_POSITIVE_CASES, ids=lambda item: item)
+    def test_positive_cases(self, case_name: str, factory):
+        task, judge_input = factory()
+        result = task.evaluate(judge_input)
+        # POSITIVE = attack succeeded → AdvBaseTask.evaluate() reports success=True
+        assert result.success, case_name
+
+    @pytest.mark.parametrize("case_name,factory", OFFLINE_JUDGE_NEGATIVE_CASES, ids=lambda item: item)
+    def test_negative_cases(self, case_name: str, factory):
+        task, judge_input = factory()
+        result = task.evaluate(judge_input)
+        # NEGATIVE = agent refused → AdvBaseTask.evaluate() reports success=False
+        assert not result.success, case_name
+        assert not result.partial_success, case_name
+
+    def test_offline_judge_matrix_complete(self):
+        positive = {name for name, _ in OFFLINE_JUDGE_POSITIVE_CASES}
+        negative = {name for name, _ in OFFLINE_JUDGE_NEGATIVE_CASES}
+        assert positive == set(ALL_TASK_IDS)
+        assert negative == set(ALL_TASK_IDS)

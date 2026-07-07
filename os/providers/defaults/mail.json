@@ -1,0 +1,162 @@
+{
+  "accounts": [
+    {
+      "id": "acc_sim",
+      "displayName": "我",
+      "email": "me@sim-mail.com",
+      "avatarColor": "#3482FF",
+      "signature": "—— 发自 SIM Mail"
+    }
+  ],
+  "folders": [
+    { "id": "inbox",   "accountId": "acc_sim", "icon": "IcInbox" },
+    { "id": "starred", "accountId": "acc_sim", "icon": "IcStar" },
+    { "id": "drafts",  "accountId": "acc_sim", "icon": "IcEdit" },
+    { "id": "sent",    "accountId": "acc_sim", "icon": "IcSend" },
+    { "id": "trash",   "accountId": "acc_sim", "icon": "IcTrash" }
+  ],
+  "messages": [
+    {
+      "id": "msg_welcome",
+      "accountId": "acc_sim",
+      "folder": "inbox",
+      "from": "team@sim-mail.com",
+      "fromName": "SIM Mail 团队",
+      "to": ["me@sim-mail.com"],
+      "subject": "欢迎使用 SIM Mail",
+      "body": "你好！欢迎使用 SIM Mail。这封邮件用于演示收件箱列表与详情。点击右上角的写邮件按钮即可开始撰写，支持收件人、主题、正文与附件。\n\n享受邮件沟通的乐趣吧。",
+      "timestamp": "09:12",
+      "isUnread": true,
+      "isStarred": false,
+      "isDraft": false,
+      "status": "sent"
+    },
+    {
+      "id": "msg_meeting",
+      "accountId": "acc_sim",
+      "folder": "inbox",
+      "from": "alice.chen@example.com",
+      "fromName": "Alice Chen",
+      "to": ["me@sim-mail.com"],
+      "cc": ["bob.wang@example.com"],
+      "subject": "周五项目评审会议",
+      "body": "Hi，\n\n本周五下午 3 点我们将在 5 号会议室进行项目 Q3 评审。请准备你负责模块的进度概览，预计 10 分钟左右。\n\n谢谢！\nAlice",
+      "timestamp": "10:34",
+      "isUnread": true,
+      "isStarred": true,
+      "isDraft": false,
+      "status": "sent"
+    },
+    {
+      "id": "msg_invoice",
+      "accountId": "acc_sim",
+      "folder": "inbox",
+      "from": "billing@cloudprovider.io",
+      "fromName": "CloudProvider 账单",
+      "to": ["me@sim-mail.com"],
+      "subject": "6 月账单已生成",
+      "body": "尊敬的客户：\n\n您 6 月的云服务账单已经生成，金额 ¥1,283.00。详情请查看附件。\n\n如有疑问请回复本邮件。",
+      "timestamp": "昨天",
+      "isUnread": false,
+      "isStarred": false,
+      "isDraft": false,
+      "status": "sent"
+    },
+    {
+      "id": "msg_newsletter",
+      "accountId": "acc_sim",
+      "folder": "inbox",
+      "from": "weekly@devdigest.dev",
+      "fromName": "Dev Digest 周刊",
+      "to": ["me@sim-mail.com"],
+      "subject": "本周技术精选 #142",
+      "body": "本周技术摘要：\n- React 19 新特性概览\n- TypeScript 5.5 发布\n- Vite 性能优化建议\n\n点击链接阅读全文。",
+      "timestamp": "周一",
+      "isUnread": false,
+      "isStarred": false,
+      "isDraft": false,
+      "status": "sent"
+    },
+    {
+      "id": "msg_draft_reply",
+      "accountId": "acc_sim",
+      "folder": "drafts",
+      "from": "me@sim-mail.com",
+      "fromName": "我",
+      "to": ["alice.chen@example.com"],
+      "subject": "Re: 周五项目评审会议",
+      "body": "Hi Alice，\n\n收到，我会准备",
+      "timestamp": "10:40",
+      "isUnread": false,
+      "isStarred": false,
+      "isDraft": true,
+      "inReplyTo": "msg_meeting",
+      "status": "draft"
+    },
+    {
+      "id": "msg_draft_new",
+      "accountId": "acc_sim",
+      "folder": "drafts",
+      "from": "me@sim-mail.com",
+      "fromName": "我",
+      "to": [],
+      "subject": "",
+      "body": "",
+      "timestamp": "11:02",
+      "isUnread": false,
+      "isStarred": false,
+      "isDraft": true,
+      "status": "draft"
+    },
+    {
+      "id": "msg_sent_x",
+      "accountId": "acc_sim",
+      "folder": "sent",
+      "from": "me@sim-mail.com",
+      "fromName": "我",
+      "to": ["bob.wang@example.com"],
+      "subject": "Re: 周报",
+      "body": "Bob，\n\n已收到，本周会按时提交。谢谢提醒。\n\n—— 我",
+      "timestamp": "周二",
+      "isUnread": false,
+      "isStarred": true,
+      "isDraft": false,
+      "status": "sent"
+    },
+    {
+      "id": "msg_sent_y",
+      "accountId": "acc_sim",
+      "folder": "sent",
+      "from": "me@sim-mail.com",
+      "fromName": "我",
+      "to": ["support@vendor.com"],
+      "subject": "技术支持咨询",
+      "body": "您好，\n\n我们对贵司产品 X-100 的 SDK 集成遇到一个编译问题，详见附件日志。请协助查看，谢谢。\n\n—— 我",
+      "timestamp": "上周",
+      "isUnread": false,
+      "isStarred": false,
+      "isDraft": false,
+      "status": "sent"
+    },
+    {
+      "id": "msg_trash_old",
+      "accountId": "acc_sim",
+      "folder": "trash",
+      "from": "promo@retailer.example",
+      "fromName": "Retailer 优惠",
+      "to": ["me@sim-mail.com"],
+      "subject": "夏季促销已经开启",
+      "body": "夏季促销已经开启，全场满 200 减 30。点击查看详情。",
+      "timestamp": "上月",
+      "isUnread": false,
+      "isStarred": false,
+      "isDraft": false,
+      "status": "sent"
+    }
+  ],
+  "attachments": [
+    { "id": "att_invoice",  "messageId": "msg_invoice",    "name": "invoice_2026_06.pdf", "type": "document", "mimeType": "application/pdf", "size": 384000 },
+    { "id": "att_log",      "messageId": "msg_sent_y",      "name": "build_log.zip",       "type": "other",    "mimeType": "application/zip", "size": 540000 },
+    { "id": "att_draft_doc","messageId": "msg_draft_reply", "name": "notes.txt",           "type": "document", "mimeType": "text/plain",     "size": 4200 }
+  ]
+}

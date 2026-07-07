@@ -1,0 +1,17 @@
+# bench_env dependencies
+
+# Required
+openai>=1.0.0
+playwright>=1.40.0
+pytest-xdist>=3.8.0
+pytest-asyncio>=0.23.0
+requests>=2.31.0
+
+# Required (for trajectory image scaling/annotation)
+pillow>=10.0.0
+
+# Required (for progress bar)
+tqdm>=4.60.0
+
+# Required (for traditional→simplified Chinese normalization in judge)
+opencc-python-reimplemented>=0.1.7
