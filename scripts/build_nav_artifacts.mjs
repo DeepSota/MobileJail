@@ -11,6 +11,7 @@
  * - Keep generate_action_tasks_from_nav_graph.mjs focused on tasks generation.
  * - Provide a single entrypoint command to keep artifacts in sync.
  */
+import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { spawnSync } from 'node:child_process';
@@ -18,7 +19,7 @@ import { spawnSync } from 'node:child_process';
 function usage() {
   console.log(`
 Usage:
-  node scripts/build_nav_artifacts.mjs <AppName> [options]
+  node scripts/build_nav_artifacts.mjs <AppName|AppPath> [options]
 
 Options:
   --data <file>         Data config file for data-mode graph expansion.
@@ -72,6 +73,26 @@ function runNode(scriptRelPath, scriptArgs) {
   }
 }
 
+function resolveAppDir(appArg) {
+  const candidates = [
+    path.resolve(appArg),
+    path.resolve('apps', appArg),
+    path.resolve('system', appArg),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(path.join(candidate, 'navigation.declaration.ts'))) {
+      return candidate;
+    }
+  }
+
+  throw new Error(
+    `navigation.declaration.ts not found for "${appArg}". Tried:\n${candidates
+      .map(candidate => ` - ${path.join(candidate, 'navigation.declaration.ts')}`)
+      .join('\n')}`,
+  );
+}
+
 function main() {
   const args = parseArgs(process.argv);
   if (!args.appName) {
@@ -79,18 +100,21 @@ function main() {
     process.exit(2);
   }
 
-  const appLower = String(args.appName).toLowerCase();
+  const appDir = resolveAppDir(args.appName);
+  const appPathArg = path.relative(process.cwd(), appDir) || '.';
+
+  const appLower = path.basename(appDir).toLowerCase();
   const schemaGraph = path.join('public', `${appLower}_nav_graph.json`);
   const dataGraph = path.join('public', `${appLower}_data_graph.json`);
   const schemaTasks = path.join('public', `${appLower}_action_tasks.json`);
   const dataTasks = path.join('public', `${appLower}_action_tasks_data.json`);
 
   if (!args.skipCheck) {
-    runNode(path.join('scripts', 'check_navigation_declaration_consistency.mjs'), [args.appName, '--actions']);
+    runNode(path.join('scripts', 'check_navigation_declaration_consistency.mjs'), [appPathArg, '--actions']);
   }
 
   runNode(path.join('scripts', 'navigation_declaration_analyzer.mjs'), [
-    args.appName,
+    appPathArg,
     '-o',
     schemaGraph,
     '--format',
@@ -118,8 +142,6 @@ function main() {
 
   if (!args.skipTasks) {
     const tasksArgsCommon = [
-      '--app',
-      args.appName,
       ...(args.tasksAllPaths ? ['--all-paths'] : []),
       ...(args.tasksMaxDepth ? ['--max-depth', args.tasksMaxDepth] : []),
       ...(args.tasksMaxPaths ? ['--max-paths', args.tasksMaxPaths] : []),

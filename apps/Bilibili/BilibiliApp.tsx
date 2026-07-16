@@ -66,6 +66,7 @@ import { SettingsImageQualityPage } from './pages/settings/SettingsImageQualityP
 import { SettingsTimerPage } from './pages/settings/SettingsTimerPage';
 import { SettingsSleepPage } from './pages/settings/SettingsSleepPage';
 import { useLocale } from '@/apps/Bilibili/locale';
+import { ShareFilePage } from './pages/ShareFilePage';
 // Standard Navigation Handler as per spec
 const BilibiliNavigationHandler: React.FC = () => {
     const navigate = useNavigate();
@@ -259,6 +260,7 @@ export const BilibiliApp: React.FC = () => {
                         <Route path="user/:mid" element={<UserProfilePage />} />
                         <Route path="messages" element={<MessagesPage />} />
                         <Route path="chat/:userId" element={<ChatPage />} />
+                        <Route path="share" element={<ShareFilePage />} />
                         <Route path="dynamic/publish" element={<DynamicPublishPage />} />
 
                         <Route path="profile/edit" element={<ProfileEditPage />} />

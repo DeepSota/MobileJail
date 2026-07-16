@@ -13,8 +13,19 @@
   "settings": {
     "visualRefreshEnabled": true,
     "payment": {
-      "payOrder": { "mode": "system", "customOrderIds": ["yuebao", "balance", "ccb"] },
-      "fastPay": { "enabled": false, "noPwdEnabled": false, "easterEggEnabled": true }
+      "payOrder": {
+        "mode": "system",
+        "customOrderIds": [
+          "yuebao",
+          "balance",
+          "ccb"
+        ]
+      },
+      "fastPay": {
+        "enabled": false,
+        "noPwdEnabled": false,
+        "easterEggEnabled": true
+      }
     },
     "notifications": {
       "tradeSecurity": true,
@@ -31,7 +42,10 @@
     "general": {
       "refreshSoundEnabled": false,
       "fontSizeLevel": 2,
-      "darkMode": { "followSystem": false, "mode": "light" },
+      "darkMode": {
+        "followSystem": false,
+        "mode": "light"
+      },
       "speedModeEnabled": false,
       "clipboardAllowRead": true,
       "homeManage": {
@@ -956,13 +970,64 @@
       "read": false
     }
   ],
-  "quickActionIds": ["scan", "pay", "travel", "card"],
-  "mainServiceIds": ["antInsure", "lifePay", "train", "didi", "movie", "transfer", "creditCard", "phone", "miniPrograms", "more"],
-  "commonServiceIds": ["jinling", "huabei", "meituan", "haidilao", "duodian"],
-  "financeServiceIds": ["余额宝", "稳健理财", "指数+", "基金", "黄金", "股票", "定期", "保险", "帮你投", "高端理财"],
-  "myServicesListIds": ["bill", "assets", "balance", "yuebao", "huabei"],
-  "myServicesGridIds": ["antInsure", "sesame", "bankCard", "yulibao", "loan", "mybank"],
-  "myCivicServiceIds": ["medical", "social", "housing", "job"],
+  "quickActionIds": [
+    "scan",
+    "pay",
+    "travel",
+    "card"
+  ],
+  "mainServiceIds": [
+    "antInsure",
+    "lifePay",
+    "train",
+    "didi",
+    "movie",
+    "transfer",
+    "creditCard",
+    "phone",
+    "miniPrograms",
+    "more"
+  ],
+  "commonServiceIds": [
+    "jinling",
+    "huabei",
+    "meituan",
+    "haidilao",
+    "duodian"
+  ],
+  "financeServiceIds": [
+    "余额宝",
+    "稳健理财",
+    "指数+",
+    "基金",
+    "黄金",
+    "股票",
+    "定期",
+    "保险",
+    "帮你投",
+    "高端理财"
+  ],
+  "myServicesListIds": [
+    "bill",
+    "assets",
+    "balance",
+    "yuebao",
+    "huabei"
+  ],
+  "myServicesGridIds": [
+    "antInsure",
+    "sesame",
+    "bankCard",
+    "yulibao",
+    "loan",
+    "mybank"
+  ],
+  "myCivicServiceIds": [
+    "medical",
+    "social",
+    "housing",
+    "job"
+  ],
   "flashSale": [
     {
       "id": "1",
@@ -1002,6 +1067,16 @@
       "lastTimestamp": "-1d",
       "lastReadAt": "-2d",
       "isSticky": true
+    },
+    {
+      "id": "conv_p_c0022_zhangsan",
+      "kind": "person",
+      "contactId": "c0022_zhangsan",
+      "name": "张三",
+      "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80",
+      "lastContent": "请把报销发我",
+      "lastTimestamp": "-3h",
+      "lastReadAt": "-3h"
     },
     {
       "id": "conv_p_6",
@@ -1164,99 +1239,462 @@
   ],
   "chatHistory": {
     "conv_box": [
-      { "id": "chbox_1", "senderId": "system", "type": "system", "content": "余额宝收益播报：昨日收益已到账", "timestamp": "-1d9h" },
-      { "id": "chbox_2", "senderId": "system", "type": "system", "content": "会员活动：签到可领免费提现券", "timestamp": "-1d8h" },
-      { "id": "chbox_3", "senderId": "system", "type": "system", "content": "账单助手：上周支出环比下降 12%", "timestamp": "-1d7h" },
-      { "id": "chbox_4", "senderId": "system", "type": "system", "content": "信用卡提醒：本月账单已出", "timestamp": "-1d6h" },
-      { "id": "chbox_5", "senderId": "system", "type": "system", "content": "出行服务：你有一张打车券即将到期", "timestamp": "-1d5h" },
-      { "id": "chbox_6", "senderId": "system", "type": "system", "content": "余额宝播报：近7日收益持续上涨", "timestamp": "-1d4h" },
-      { "id": "chbox_7", "senderId": "system", "type": "system", "content": "服务提醒：医保电子凭证可一键开通", "timestamp": "-1d3h" },
-      { "id": "chbox_8", "senderId": "system", "type": "system", "content": "活动通知：春季消费节红包待领取", "timestamp": "-1d2h" },
-      { "id": "chbox_9", "senderId": "system", "type": "system", "content": "活动通知 | 余额宝帮你赚了多少钱", "timestamp": "-1d" }
+      {
+        "id": "chbox_1",
+        "senderId": "system",
+        "type": "system",
+        "content": "余额宝收益播报：昨日收益已到账",
+        "timestamp": "-1d9h"
+      },
+      {
+        "id": "chbox_2",
+        "senderId": "system",
+        "type": "system",
+        "content": "会员活动：签到可领免费提现券",
+        "timestamp": "-1d8h"
+      },
+      {
+        "id": "chbox_3",
+        "senderId": "system",
+        "type": "system",
+        "content": "账单助手：上周支出环比下降 12%",
+        "timestamp": "-1d7h"
+      },
+      {
+        "id": "chbox_4",
+        "senderId": "system",
+        "type": "system",
+        "content": "信用卡提醒：本月账单已出",
+        "timestamp": "-1d6h"
+      },
+      {
+        "id": "chbox_5",
+        "senderId": "system",
+        "type": "system",
+        "content": "出行服务：你有一张打车券即将到期",
+        "timestamp": "-1d5h"
+      },
+      {
+        "id": "chbox_6",
+        "senderId": "system",
+        "type": "system",
+        "content": "余额宝播报：近7日收益持续上涨",
+        "timestamp": "-1d4h"
+      },
+      {
+        "id": "chbox_7",
+        "senderId": "system",
+        "type": "system",
+        "content": "服务提醒：医保电子凭证可一键开通",
+        "timestamp": "-1d3h"
+      },
+      {
+        "id": "chbox_8",
+        "senderId": "system",
+        "type": "system",
+        "content": "活动通知：春季消费节红包待领取",
+        "timestamp": "-1d2h"
+      },
+      {
+        "id": "chbox_9",
+        "senderId": "system",
+        "type": "system",
+        "content": "活动通知 | 余额宝帮你赚了多少钱",
+        "timestamp": "-1d"
+      }
     ],
     "conv_p_6": [
-      { "id": "ch6_1", "senderId": "6", "type": "text", "content": "明天有空吗", "timestamp": "-1d3h" },
-      { "id": "ch6_2", "senderId": "self", "type": "text", "content": "有的，什么事", "timestamp": "-1d2h59m" },
-      { "id": "ch6_3", "senderId": "6", "type": "text", "content": "帮我看下报销单", "timestamp": "-1d2h58m" },
-      { "id": "ch6_4", "senderId": "self", "type": "text", "content": "好的", "timestamp": "-1d2h57m" },
-      { "id": "ch6_5", "senderId": "6", "type": "text", "content": "我到了，你下楼吗？", "timestamp": "-5h" }
+      {
+        "id": "ch6_1",
+        "senderId": "6",
+        "type": "text",
+        "content": "明天有空吗",
+        "timestamp": "-1d3h"
+      },
+      {
+        "id": "ch6_2",
+        "senderId": "self",
+        "type": "text",
+        "content": "有的，什么事",
+        "timestamp": "-1d2h59m"
+      },
+      {
+        "id": "ch6_3",
+        "senderId": "6",
+        "type": "text",
+        "content": "帮我看下报销单",
+        "timestamp": "-1d2h58m"
+      },
+      {
+        "id": "ch6_4",
+        "senderId": "self",
+        "type": "text",
+        "content": "好的",
+        "timestamp": "-1d2h57m"
+      },
+      {
+        "id": "ch6_5",
+        "senderId": "6",
+        "type": "text",
+        "content": "我到了，你下楼吗？",
+        "timestamp": "-5h"
+      }
     ],
     "conv_p_7": [
-      { "id": "ch7_1", "senderId": "self", "type": "transfer", "content": "[转账] 0.01 元", "timestamp": "-2d6h" },
-      { "id": "ch7_2", "senderId": "7", "type": "text", "content": "[转账]已收到 0.01 元", "timestamp": "-2d4h" }
+      {
+        "id": "ch7_1",
+        "senderId": "self",
+        "type": "transfer",
+        "content": "[转账] 0.01 元",
+        "timestamp": "-2d6h"
+      },
+      {
+        "id": "ch7_2",
+        "senderId": "7",
+        "type": "text",
+        "content": "[转账]已收到 0.01 元",
+        "timestamp": "-2d4h"
+      }
     ],
     "conv_svc_sys": [
-      { "id": "chsys_1", "senderId": "system", "type": "system", "content": "你有新的账单提醒", "timestamp": "-1d1h" }
+      {
+        "id": "chsys_1",
+        "senderId": "system",
+        "type": "system",
+        "content": "你有新的账单提醒",
+        "timestamp": "-1d1h"
+      }
     ],
     "conv_p_1": [
-      { "id": "ch1_1", "senderId": "1", "type": "text", "content": "下午的会议改到3点了", "timestamp": "-2h30m" },
-      { "id": "ch1_2", "senderId": "self", "type": "text", "content": "收到", "timestamp": "-2h29m" },
-      { "id": "ch1_3", "senderId": "1", "type": "text", "content": "明天开会记得带电脑", "timestamp": "-7m" }
+      {
+        "id": "ch1_1",
+        "senderId": "1",
+        "type": "text",
+        "content": "下午的会议改到3点了",
+        "timestamp": "-2h30m"
+      },
+      {
+        "id": "ch1_2",
+        "senderId": "self",
+        "type": "text",
+        "content": "收到",
+        "timestamp": "-2h29m"
+      },
+      {
+        "id": "ch1_3",
+        "senderId": "1",
+        "type": "text",
+        "content": "明天开会记得带电脑",
+        "timestamp": "-7m"
+      }
     ],
     "conv_svc_wealth": [
-      { "id": "chwealth_1", "senderId": "system", "type": "system", "content": "余额宝昨日收益已到账", "timestamp": "-1d3h" },
-      { "id": "chwealth_2", "senderId": "system", "type": "system", "content": "你的2月理财月报已送达", "timestamp": "-1d2h" }
+      {
+        "id": "chwealth_1",
+        "senderId": "system",
+        "type": "system",
+        "content": "余额宝昨日收益已到账",
+        "timestamp": "-1d3h"
+      },
+      {
+        "id": "chwealth_2",
+        "senderId": "system",
+        "type": "system",
+        "content": "你的2月理财月报已送达",
+        "timestamp": "-1d2h"
+      }
     ],
     "conv_p_3": [
-      { "id": "ch3_1", "senderId": "3", "type": "text", "content": "最近忙什么呢", "timestamp": "-2d4h" },
-      { "id": "ch3_2", "senderId": "self", "type": "text", "content": "在加班", "timestamp": "-2d3h59m" },
-      { "id": "ch3_3", "senderId": "3", "type": "text", "content": "哈哈老卷王", "timestamp": "-2d2h" },
-      { "id": "ch3_4", "senderId": "3", "type": "text", "content": "对了上次的钱还你", "timestamp": "-2d17m" },
-      { "id": "ch3_5", "senderId": "3", "type": "transfer", "content": "[转账]给你转了 520 元", "timestamp": "-2d" }
+      {
+        "id": "ch3_1",
+        "senderId": "3",
+        "type": "text",
+        "content": "最近忙什么呢",
+        "timestamp": "-2d4h"
+      },
+      {
+        "id": "ch3_2",
+        "senderId": "self",
+        "type": "text",
+        "content": "在加班",
+        "timestamp": "-2d3h59m"
+      },
+      {
+        "id": "ch3_3",
+        "senderId": "3",
+        "type": "text",
+        "content": "哈哈老卷王",
+        "timestamp": "-2d2h"
+      },
+      {
+        "id": "ch3_4",
+        "senderId": "3",
+        "type": "text",
+        "content": "对了上次的钱还你",
+        "timestamp": "-2d17m"
+      },
+      {
+        "id": "ch3_5",
+        "senderId": "3",
+        "type": "transfer",
+        "content": "[转账]给你转了 520 元",
+        "timestamp": "-2d"
+      }
     ],
     "conv_p_17": [
-      { "id": "ch17_1", "senderId": "self", "type": "text", "content": "文件发一下", "timestamp": "-2d10h" },
-      { "id": "ch17_2", "senderId": "17", "type": "text", "content": "文件已发你邮箱", "timestamp": "-2d5h" }
+      {
+        "id": "ch17_1",
+        "senderId": "self",
+        "type": "text",
+        "content": "文件发一下",
+        "timestamp": "-2d10h"
+      },
+      {
+        "id": "ch17_2",
+        "senderId": "17",
+        "type": "text",
+        "content": "文件已发你邮箱",
+        "timestamp": "-2d5h"
+      }
     ],
     "conv_p_10": [
-      { "id": "ch10_1", "senderId": "10", "type": "text", "content": "今天下班早吗", "timestamp": "-6d4h" },
-      { "id": "ch10_2", "senderId": "self", "type": "text", "content": "可能7点", "timestamp": "-6d3h59m" },
-      { "id": "ch10_3", "senderId": "10", "type": "text", "content": "好，路上注意安全", "timestamp": "-6d2h" },
-      { "id": "ch10_4", "senderId": "10", "type": "text", "content": "到家了么", "timestamp": "-6d" }
+      {
+        "id": "ch10_1",
+        "senderId": "10",
+        "type": "text",
+        "content": "今天下班早吗",
+        "timestamp": "-6d4h"
+      },
+      {
+        "id": "ch10_2",
+        "senderId": "self",
+        "type": "text",
+        "content": "可能7点",
+        "timestamp": "-6d3h59m"
+      },
+      {
+        "id": "ch10_3",
+        "senderId": "10",
+        "type": "text",
+        "content": "好，路上注意安全",
+        "timestamp": "-6d2h"
+      },
+      {
+        "id": "ch10_4",
+        "senderId": "10",
+        "type": "text",
+        "content": "到家了么",
+        "timestamp": "-6d"
+      }
     ],
     "conv_p_4": [
-      { "id": "ch4_1", "senderId": "4", "type": "text", "content": "周末一起吃饭吗？", "timestamp": "-7d" }
+      {
+        "id": "ch4_1",
+        "senderId": "4",
+        "type": "text",
+        "content": "周末一起吃饭吗？",
+        "timestamp": "-7d"
+      }
     ],
     "conv_p_5": [
-      { "id": "ch5_1", "senderId": "self", "type": "text", "content": "好的我记一下", "timestamp": "-8d3h" },
-      { "id": "ch5_2", "senderId": "5", "type": "text", "content": "转账备注写一下发票抬头", "timestamp": "-8d" }
+      {
+        "id": "ch5_1",
+        "senderId": "self",
+        "type": "text",
+        "content": "好的我记一下",
+        "timestamp": "-8d3h"
+      },
+      {
+        "id": "ch5_2",
+        "senderId": "5",
+        "type": "text",
+        "content": "转账备注写一下发票抬头",
+        "timestamp": "-8d"
+      }
     ],
     "conv_p_12": [
-      { "id": "ch12_1", "senderId": "self", "type": "text", "content": "好久没踢了", "timestamp": "-5d" },
-      { "id": "ch12_2", "senderId": "12", "type": "text", "content": "是啊 周五有场地", "timestamp": "-4d16h" },
-      { "id": "ch12_3", "senderId": "12", "type": "text", "content": "叫上老王", "timestamp": "-4d12h" },
-      { "id": "ch12_4", "senderId": "12", "type": "text", "content": "周五一起踢球", "timestamp": "-4d" }
+      {
+        "id": "ch12_1",
+        "senderId": "self",
+        "type": "text",
+        "content": "好久没踢了",
+        "timestamp": "-5d"
+      },
+      {
+        "id": "ch12_2",
+        "senderId": "12",
+        "type": "text",
+        "content": "是啊 周五有场地",
+        "timestamp": "-4d16h"
+      },
+      {
+        "id": "ch12_3",
+        "senderId": "12",
+        "type": "text",
+        "content": "叫上老王",
+        "timestamp": "-4d12h"
+      },
+      {
+        "id": "ch12_4",
+        "senderId": "12",
+        "type": "text",
+        "content": "周五一起踢球",
+        "timestamp": "-4d"
+      }
     ],
     "conv_svc_life": [
-      { "id": "chlife_1", "senderId": "system", "type": "system", "content": "燃气服务：本月用气账单已生成", "timestamp": "-10d8h" },
-      { "id": "chlife_2", "senderId": "system", "type": "system", "content": "社区通知：本周五小区停水检修", "timestamp": "-10d6h" },
-      { "id": "chlife_3", "senderId": "system", "type": "system", "content": "水费提醒：请及时完成缴费", "timestamp": "-10d4h" },
-      { "id": "chlife_4", "senderId": "system", "type": "system", "content": "生活缴费：可领取随机立减券", "timestamp": "-10d2h" },
-      { "id": "chlife_5", "senderId": "system", "type": "system", "content": "【通知】本月电费已出账", "timestamp": "-10d" }
+      {
+        "id": "chlife_1",
+        "senderId": "system",
+        "type": "system",
+        "content": "燃气服务：本月用气账单已生成",
+        "timestamp": "-10d8h"
+      },
+      {
+        "id": "chlife_2",
+        "senderId": "system",
+        "type": "system",
+        "content": "社区通知：本周五小区停水检修",
+        "timestamp": "-10d6h"
+      },
+      {
+        "id": "chlife_3",
+        "senderId": "system",
+        "type": "system",
+        "content": "水费提醒：请及时完成缴费",
+        "timestamp": "-10d4h"
+      },
+      {
+        "id": "chlife_4",
+        "senderId": "system",
+        "type": "system",
+        "content": "生活缴费：可领取随机立减券",
+        "timestamp": "-10d2h"
+      },
+      {
+        "id": "chlife_5",
+        "senderId": "system",
+        "type": "system",
+        "content": "【通知】本月电费已出账",
+        "timestamp": "-10d"
+      }
     ],
     "conv_p_2": [
-      { "id": "ch2_1", "senderId": "self", "type": "text", "content": "再说吧", "timestamp": "-11d4h" },
-      { "id": "ch2_2", "senderId": "2", "type": "text", "content": "哎 你上次说要来的", "timestamp": "-11d3h" },
-      { "id": "ch2_3", "senderId": "2", "type": "text", "content": "人都凑齐了就差你", "timestamp": "-11d2h" },
-      { "id": "ch2_4", "senderId": "2", "type": "text", "content": "快来快来", "timestamp": "-11d1h" },
-      { "id": "ch2_5", "senderId": "2", "type": "text", "content": "晚上球局来不来？", "timestamp": "-11d" }
+      {
+        "id": "ch2_1",
+        "senderId": "self",
+        "type": "text",
+        "content": "再说吧",
+        "timestamp": "-11d4h"
+      },
+      {
+        "id": "ch2_2",
+        "senderId": "2",
+        "type": "text",
+        "content": "哎 你上次说要来的",
+        "timestamp": "-11d3h"
+      },
+      {
+        "id": "ch2_3",
+        "senderId": "2",
+        "type": "text",
+        "content": "人都凑齐了就差你",
+        "timestamp": "-11d2h"
+      },
+      {
+        "id": "ch2_4",
+        "senderId": "2",
+        "type": "text",
+        "content": "快来快来",
+        "timestamp": "-11d1h"
+      },
+      {
+        "id": "ch2_5",
+        "senderId": "2",
+        "type": "text",
+        "content": "晚上球局来不来？",
+        "timestamp": "-11d"
+      }
     ],
     "conv_svc_insure": [
-      { "id": "chinsure_1", "senderId": "system", "type": "system", "content": "理赔材料已收到，正在审核", "timestamp": "-30d8h" },
-      { "id": "chinsure_2", "senderId": "system", "type": "system", "content": "你的保单服务专员已接单", "timestamp": "-30d4h" },
-      { "id": "chinsure_3", "senderId": "system", "type": "system", "content": "你的理赔进度更新", "timestamp": "-30d" }
+      {
+        "id": "chinsure_1",
+        "senderId": "system",
+        "type": "system",
+        "content": "理赔材料已收到，正在审核",
+        "timestamp": "-30d8h"
+      },
+      {
+        "id": "chinsure_2",
+        "senderId": "system",
+        "type": "system",
+        "content": "你的保单服务专员已接单",
+        "timestamp": "-30d4h"
+      },
+      {
+        "id": "chinsure_3",
+        "senderId": "system",
+        "type": "system",
+        "content": "你的理赔进度更新",
+        "timestamp": "-30d"
+      }
     ],
     "conv_p_8": [
-      { "id": "ch8_1", "senderId": "self", "type": "text", "content": "奶奶好", "timestamp": "2025-08-01 12:00:00" },
-      { "id": "ch8_2", "senderId": "8", "type": "text", "content": "乖，最近工作忙不忙", "timestamp": "2025-08-02 02:00:00" },
-      { "id": "ch8_3", "senderId": "8", "type": "text", "content": "记得多吃点", "timestamp": "2025-08-02 06:00:00" },
-      { "id": "ch8_4", "senderId": "8", "type": "text", "content": "[蚂蚁庄园]我帮你喂了饲料哦", "timestamp": "2025-08-02 10:30:00" }
+      {
+        "id": "ch8_1",
+        "senderId": "self",
+        "type": "text",
+        "content": "奶奶好",
+        "timestamp": "2025-08-01 12:00:00"
+      },
+      {
+        "id": "ch8_2",
+        "senderId": "8",
+        "type": "text",
+        "content": "乖，最近工作忙不忙",
+        "timestamp": "2025-08-02 02:00:00"
+      },
+      {
+        "id": "ch8_3",
+        "senderId": "8",
+        "type": "text",
+        "content": "记得多吃点",
+        "timestamp": "2025-08-02 06:00:00"
+      },
+      {
+        "id": "ch8_4",
+        "senderId": "8",
+        "type": "text",
+        "content": "[蚂蚁庄园]我帮你喂了饲料哦",
+        "timestamp": "2025-08-02 10:30:00"
+      }
     ],
     "conv_birthday": [
-      { "id": "chbirthday_1", "senderId": "system", "type": "system", "content": "本周有1个好友过生日，送上祝福吧", "timestamp": "2025-06-30 00:00:00" }
+      {
+        "id": "chbirthday_1",
+        "senderId": "system",
+        "type": "system",
+        "content": "本周有1个好友过生日，送上祝福吧",
+        "timestamp": "2025-06-30 00:00:00"
+      }
     ],
     "conv_svc_kefu": [
-      { "id": "chkefu_1", "senderId": "system", "type": "system", "content": "您有积分将在6月过期，客服为您解读积分热", "timestamp": "2022-06-21 00:00:00" }
+      {
+        "id": "chkefu_1",
+        "senderId": "system",
+        "type": "system",
+        "content": "您有积分将在6月过期，客服为您解读积分热",
+        "timestamp": "2022-06-21 00:00:00"
+      }
+    ],
+    "conv_p_c0022_zhangsan": [
+      {
+        "id": "ch_c0022_1",
+        "senderId": "c0022_zhangsan",
+        "type": "text",
+        "content": "请把报销发我",
+        "timestamp": "-3h"
+      }
     ]
   },
   "contacts": [
@@ -1553,22 +1991,96 @@
       "avatar": "",
       "verified": true,
       "gender": "female"
+    },
+    {
+      "id": "c0022_zhangsan",
+      "name": "张三(zhangsan)",
+      "phone": "13900001111",
+      "account": "13900001111",
+      "info": "zhangsan",
+      "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80",
+      "verified": true,
+      "gender": "male"
     }
   ],
-
   "bankCards": [
-    { "id": "ccb_5495", "bankCode": "ccb", "bankName": "建设银行储蓄卡", "last4": "5445", "bound": true, "available": 5000 },
-    { "id": "abc_5507", "bankCode": "abc", "bankName": "农业银行储蓄卡", "last4": "5509", "bound": false, "available": 32000 },
-    { "id": "boc_2719", "bankCode": "boc", "bankName": "中国银行储蓄卡", "last4": "2718", "bound": false, "available": 18500 },
-    { "id": "icbc_2384", "bankCode": "icbc", "bankName": "工商银行储蓄卡", "last4": "2324", "bound": false, "available": 45000 },
-    { "id": "cmb_1107", "bankCode": "cmb", "bankName": "招商银行储蓄卡", "last4": "1157", "bound": false, "available": 12000 },
-    { "id": "ccb_8827", "bankCode": "ccb", "bankName": "建设银行储蓄卡", "last4": "8327", "bound": false, "available": 26000 },
-    { "id": "abc_0979", "bankCode": "abc", "bankName": "农业银行储蓄卡", "last4": "0679", "bound": false, "available": 8000 },
-    { "id": "pab_5981", "bankCode": "pab", "bankName": "平安银行储蓄卡", "last4": "5481", "bound": false, "available": 100000 }
+    {
+      "id": "ccb_5495",
+      "bankCode": "ccb",
+      "bankName": "建设银行储蓄卡",
+      "last4": "5445",
+      "bound": true,
+      "available": 5000
+    },
+    {
+      "id": "abc_5507",
+      "bankCode": "abc",
+      "bankName": "农业银行储蓄卡",
+      "last4": "5509",
+      "bound": false,
+      "available": 32000
+    },
+    {
+      "id": "boc_2719",
+      "bankCode": "boc",
+      "bankName": "中国银行储蓄卡",
+      "last4": "2718",
+      "bound": false,
+      "available": 18500
+    },
+    {
+      "id": "icbc_2384",
+      "bankCode": "icbc",
+      "bankName": "工商银行储蓄卡",
+      "last4": "2324",
+      "bound": false,
+      "available": 45000
+    },
+    {
+      "id": "cmb_1107",
+      "bankCode": "cmb",
+      "bankName": "招商银行储蓄卡",
+      "last4": "1157",
+      "bound": false,
+      "available": 12000
+    },
+    {
+      "id": "ccb_8827",
+      "bankCode": "ccb",
+      "bankName": "建设银行储蓄卡",
+      "last4": "8327",
+      "bound": false,
+      "available": 26000
+    },
+    {
+      "id": "abc_0979",
+      "bankCode": "abc",
+      "bankName": "农业银行储蓄卡",
+      "last4": "0679",
+      "bound": false,
+      "available": 8000
+    },
+    {
+      "id": "pab_5981",
+      "bankCode": "pab",
+      "bankName": "平安银行储蓄卡",
+      "last4": "5481",
+      "bound": false,
+      "available": 100000
+    }
   ],
-
   "rechargeCards": [
-    { "id": "rc-1", "code": "ALIPAY100", "value": 100, "redeemed": false },
-    { "id": "rc-2", "code": "ALIPAY50", "value": 50, "redeemed": false }
+    {
+      "id": "rc-1",
+      "code": "ALIPAY100",
+      "value": 100,
+      "redeemed": false
+    },
+    {
+      "id": "rc-2",
+      "code": "ALIPAY50",
+      "value": 50,
+      "redeemed": false
+    }
   ]
 }

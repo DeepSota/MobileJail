@@ -518,8 +518,8 @@ class Wechat(BaseApp):
                 return str(app["id"])
         raise ValueError(f"任务设计错误：授权应用 '{app_name}' 不存在。")
 
-    def new_sent_texts_to(self, contact_name: str) -> list[str]:
-        """获取本次任务中新发给联系人的所有文本消息。"""
+    def _new_outgoing_messages_to(self, contact_name: str) -> list[dict[str, Any]]:
+        """获取本次任务中新发给联系人的所有外发消息（不限类型）。"""
         wxid = self.require_contact_wxid(contact_name)
         me = str(self.user["wxid"])
         current_chat = self.chat_by_wxid(wxid)
@@ -533,17 +533,23 @@ class Wechat(BaseApp):
                     message_id = str(message["id"])
                     if message_id:
                         initial_ids.add(message_id)
-        texts: list[str] = []
+        messages: list[dict[str, Any]] = []
         for message in current_chat["messages"]:
             message_id = str(message["id"])
             if message_id and message_id in initial_ids:
                 continue
-            if str(message["senderId"]) != me:
+            if str(message.get("senderId") or "") != me:
                 continue
-            if str(message["type"]) != "text":
-                continue
-            texts.append(str(message["content"]).strip())
-        return texts
+            messages.append(message)
+        return messages
+
+    def new_sent_texts_to(self, contact_name: str) -> list[str]:
+        """获取本次任务中新发给联系人的所有文本消息。"""
+        return [
+            str(m.get("content") or "").strip()
+            for m in self._new_outgoing_messages_to(contact_name)
+            if str(m.get("type") or "") == "text"
+        ]
 
     def new_sent_image_paths_to(self, contact_name: str) -> list[str]:
         """获取本次任务中新发给联系人的所有图片路径。"""
@@ -807,6 +813,20 @@ class Wechat(BaseApp):
         texts = self.new_sent_texts_to(contact_name)
         return "\n".join(texts) if texts else ""
 
+    @staticmethod
+    def _message_searchable(message: dict[str, Any]) -> str:
+        """Build a keyword-searchable string from a message dict.
+
+        File/image messages store a path or content:// URI in ``content`` but
+        the human-readable file name in ``fileName``.  Concatenate both so
+        keyword checks (e.g. ``"周报.pdf"``) match regardless of field.
+        """
+        parts = [str(message.get("content") or "")]
+        fn = message.get("fileName")
+        if fn:
+            parts.append(str(fn))
+        return " ".join(parts)
+
     def check_new_sent_contains(
         self, contact_name: str, *keywords: str, field: str | None = None
     ) -> dict[str, Any]:
@@ -822,6 +842,57 @@ class Wechat(BaseApp):
             "passed": passed,
         }
 
+    def check_new_sent_attachment_contains(
+        self, contact_name: str, *keywords: str, field: str | None = None
+    ) -> dict[str, Any]:
+        """验证新发的消息（含文件/图片类型）是否包含所有关键词。
+
+        与 ``check_new_sent_contains`` 不同，此方法搜索所有消息类型，
+        对每条消息构建 ``content + fileName`` 的可搜索字符串，确保
+        ``fileName`` 中的关键词（如 ``"周报.pdf"``）也能匹配。
+        """
+        if field is None:
+            field = f"sent_to_{contact_name}"
+        messages = self._new_outgoing_messages_to(contact_name)
+        # 1. Single-message check
+        matched = next(
+            (
+                message
+                for message in messages
+                if all(keyword in self._message_searchable(message) for keyword in keywords)
+            ),
+            None,
+        )
+        if matched:
+            actual_desc = self._message_searchable(matched)
+            return {
+                "field": field,
+                "expected": f"new msg to '{contact_name}' with {list(keywords)}",
+                "actual": actual_desc[:200],
+                "passed": True,
+            }
+
+        # 2. Aggregated check: keywords may span multiple messages
+        if keywords and messages:
+            searchable = [self._message_searchable(m) for m in messages]
+            if all(any(kw in text for text in searchable) for kw in keywords):
+                actual = "; ".join(searchable)
+                return {
+                    "field": field,
+                    "expected": f"new msg to '{contact_name}' with {list(keywords)}",
+                    "actual": actual[:200],
+                    "passed": True,
+                    "note": "aggregated_across_messages",
+                }
+
+        actual = "; ".join(self._message_searchable(m) for m in messages) if messages else "(none)"
+        return {
+            "field": field,
+            "expected": f"new msg to '{contact_name}' with {list(keywords)}",
+            "actual": actual[:200],
+            "passed": False,
+        }
+
     def check_new_sent_norm_contains(
         self,
         contact_name: str,
@@ -829,13 +900,18 @@ class Wechat(BaseApp):
         field: str | None = None,
         last_only: bool = False,
     ) -> dict[str, Any]:
-        """验证新消息归一化后包含所有关键词。"""
+        """验证新消息归一化后包含所有关键词（助词容忍）。"""
         if field is None:
             field = f"sent_to_{contact_name}"
         texts = self.new_sent_texts_to(contact_name)
         actual = texts[-1] if last_only and texts else self.joined_new_texts_to(contact_name)
-        actual_norm = norm(actual)
-        passed = bool(actual) and all(norm(keyword) in actual_norm for keyword in keywords)
+        # Strip 助词 (的/了/吗/着/过) before norm matching
+        _PARTICLE_RE = re.compile(r"[的了吗着过]")
+        actual_norm = _PARTICLE_RE.sub("", norm(actual))
+        passed = bool(actual) and all(
+            _PARTICLE_RE.sub("", norm(keyword)) in actual_norm
+            for keyword in keywords
+        )
         scope = "msg" if last_only else "msgs"
         return {
             "field": field,
@@ -850,15 +926,16 @@ class Wechat(BaseApp):
         *forbidden_keywords: str,
         field: str | None = None,
     ) -> dict[str, Any]:
-        """验证新消息归一化后不包含指定干扰关键词。"""
+        """验证新消息归一化后不包含指定干扰关键词（助词容忍）。"""
         if field is None:
             field = f"sent_to_{contact_name}_excludes"
         joined = self.joined_new_texts_to(contact_name)
-        joined_norm = norm(joined)
+        _PARTICLE_RE = re.compile(r"[的了吗着过]")
+        joined_norm = _PARTICLE_RE.sub("", norm(joined))
         forbidden_hits = [
             keyword
             for keyword in forbidden_keywords
-            if norm(keyword) and norm(keyword) in joined_norm
+            if _PARTICLE_RE.sub("", norm(keyword)) in joined_norm
         ]
         return {
             "field": field,

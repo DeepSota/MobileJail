@@ -12,8 +12,9 @@ import {
 } from '../res/icons';
 import { FSNode } from '@/os/types';
 import * as FileSystem from '@/os/FileSystemService';
+import { isPublicSharedPath } from '@/os/FileShareService';
 import { useFileManagerStore, selectClipboardHasItems } from '../state';
-import { getFileIcon, getFileIconColor, isPdfPreviewableFile, isTextPreviewableFile } from '../utils/fileUtils';
+import { getFileIcon, getFileIconColor } from '../utils/fileUtils';
 import { InputDialog, FileDetailsDialog, ConfirmDialog, ActionMenu } from '../components/Dialog';
 import { TransferSheet } from '../components/TransferSheet';
 import { Toast } from '@/os/components/Toast';
@@ -24,11 +25,14 @@ import { strings } from '../res/strings';
 import { stringsEn } from '../res/strings.en';
 import { useAppStrings } from '@/os/useAppStrings';
 import * as TimeService from '@/os/TimeService';
-import { transferNodesToDirectory, shareNodesAsImages, shareNodesAsFiles, type TransferOperation } from '../utils/fileOperations';
+import { shareNodes, transferNodesToDirectory, type TransferOperation } from '../utils/fileOperations';
+import { getFileOpenTarget, useOpenFile } from '../hooks/useOpenFile';
+import { UnsupportedFileSheet } from '../components/UnsupportedFileSheet';
 export const FolderPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const { go, back } = useFileManagerGestures();
+  const { openFile, unsupportedFile, dismissUnsupportedFile } = useOpenFile();
   const clipboardItems = useFileManagerStore(s => s.clipboardItems);
   const clipboardOperation = useFileManagerStore(s => s.clipboardOperation);
   const paste = useFileManagerStore(s => s.paste);
@@ -100,7 +104,8 @@ export const FolderPage: React.FC = () => {
   const closeModal = () => back();
   
   // Get path from URL
-  const currentPath = searchParams.get('path') || '/sdcard';
+  const requestedPath = searchParams.get('path') || '/sdcard';
+  const currentPath = isPublicSharedPath(requestedPath) ? requestedPath : '/sdcard';
   
   const [items, setItems] = useState<FSNode[]>([]);
   const [scrollTop, setScrollTop] = useState(0);
@@ -136,16 +141,7 @@ export const FolderPage: React.FC = () => {
       toggleSelect(item.id);
       return;
     }
-    if (item.type === 'directory') go('folder.open', { path: item.path });
-    else if (isTextPreviewableFile(item)) go('file.text.open', { path: item.path });
-    else if (isPdfPreviewableFile(item)) go('file.pdf.open', { path: item.path });
-    else if (item.mimeType?.startsWith('image/')) {
-      window.__OS__?.startActivity?.({
-        action: 'ACTION_VIEW',
-        type: item.mimeType,
-        data: { stream: item.path },
-      });
-    }
+    openFile(item);
   };
   
   const handlePointerDown = (item: FSNode) => {
@@ -393,29 +389,34 @@ export const FolderPage: React.FC = () => {
                 const isSelected = selectedIds.has(item.id);
                 const isCutting = clipboardOperation === 'cut' && clipboardItems.some(i => i.id === item.id);
                 const isImage = item.mimeType?.startsWith('image/');
-                const triggerId = item.type === 'directory'
-                  ? 'folder.open'
-                  : isTextPreviewableFile(item)
-                    ? 'file.text.open'
-                    : isPdfPreviewableFile(item)
-                      ? 'file.pdf.open'
-                      : undefined;
-                const actionAttrs = !triggerId && isImage
+                const openTarget = getFileOpenTarget(item);
+                const openAttrs = openTarget === 'folder'
                   ? {
-                      'data-action': 'file.image.open',
-                      'data-action-type': 'open',
-                      'data-action-params': JSON.stringify({ path: item.path }),
+                      'data-trigger': 'folder.open',
+                      'data-trigger-type': 'tap',
+                      'data-trigger-params': JSON.stringify({ path: item.path }),
                     }
-                  : undefined;
+                  : openTarget === 'viewer'
+                    ? {
+                        'data-trigger': 'file.viewer.open',
+                        'data-trigger-type': 'tap',
+                        'data-trigger-params': JSON.stringify({ path: item.path }),
+                      }
+                    : openTarget === 'unsupported'
+                      ? {
+                          'data-trigger': 'folder.file.unsupported.open',
+                          'data-trigger-type': 'tap',
+                          'data-trigger-params': JSON.stringify({ itemPath: item.path }),
+                        }
+                      : {
+                          'data-action': 'folder.file.image.open',
+                          'data-action-type': 'tap',
+                          'data-action-params': JSON.stringify({ path: item.path }),
+                        };
 
                 return (
                   <button key={item.id} onClick={() => handleItemClick(item)} onContextMenu={(e) => e.preventDefault()} onPointerDown={() => handlePointerDown(item)} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} onPointerLeave={handlePointerUp}
-                    {...(triggerId ? {
-                      'data-trigger': triggerId,
-                      'data-trigger-type': 'tap',
-                      'data-trigger-params': JSON.stringify({ path: item.path }),
-                    } : {})}
-                    {...(actionAttrs ?? {})}
+                    {...openAttrs}
                     className={`w-full flex items-center gap-4 px-4 py-3 active:bg-gray-50 transition-colors ${isSelected ? 'bg-blue-50' : ''} ${isCutting ? 'opacity-50' : ''}`}>
                     <div className="w-14 h-14 rounded-xl bg-gray-50 flex items-center justify-center shrink-0 overflow-hidden">
                       {isImage ? <AsyncImage path={item.path} className="w-full h-full object-cover" /> : 
@@ -454,11 +455,11 @@ export const FolderPage: React.FC = () => {
           <button
             disabled={!hasSelection}
             onClick={() => {
-              const ok = shareNodesAsImages(getSelectedNodes()) || shareNodesAsFiles(getSelectedNodes());
+              const ok = shareNodes(getSelectedNodes());
               if (!ok) showToast(s.toast_send_no_image);
             }}
             data-action="folder.select.send"
-            data-action-type="open"
+            data-action-type="tap"
             className={actionBtn}
           >
             <div className="w-6 h-6 flex items-center justify-center">
@@ -538,6 +539,8 @@ export const FolderPage: React.FC = () => {
         onCloseCreateFolder={back}
         onCreatedFolder={refreshItems}
       />
+
+      <UnsupportedFileSheet file={unsupportedFile} onClose={dismissUnsupportedFile} />
 
       <Toast message={toast.message} visible={toast.visible} />
     </div>

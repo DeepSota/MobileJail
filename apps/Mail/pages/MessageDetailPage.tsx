@@ -18,6 +18,7 @@ import { useAppStrings } from '@/os/useAppStrings';
 import { strings } from '../res/strings';
 import { stringsEn } from '../res/strings.en';
 import type { MailMessage } from '../types';
+import { Toast } from '@/os/components/Toast';
 
 type DialogState = null | 'trash' | 'delete';
 
@@ -28,6 +29,12 @@ export const MessageDetailPage: React.FC = () => {
   const { go, back, bindBack } = useMailGestures();
   const providerState = useMailProviderState();
   const [dialog, setDialog] = useState<DialogState>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const showToast = (message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast((current) => (current === message ? null : current)), 2200);
+  };
 
   // Pull from provider subscription (re-renders on change).
   const message: MailMessage | undefined = getMessage(messageId);
@@ -221,7 +228,12 @@ export const MessageDetailPage: React.FC = () => {
             </div>
             <div className="flex flex-col gap-2">
               {attachments.map((a) => (
-                <AttachmentChip key={a.id} attachment={a} readOnly />
+                <AttachmentChip
+                  key={a.id}
+                  attachment={a}
+                  readOnly
+                  onOpenError={() => showToast(s.attachment_unavailable)}
+                />
               ))}
             </div>
           </div>
@@ -259,6 +271,7 @@ export const MessageDetailPage: React.FC = () => {
         {providerState.accounts.length}
         {Object.keys(ICON_REGISTRY).length}
       </span>
+      <Toast message={toast ?? ''} visible={Boolean(toast)} />
     </div>
   );
 };

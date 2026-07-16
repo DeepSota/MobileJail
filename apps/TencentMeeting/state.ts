@@ -13,6 +13,7 @@ import {
     type DeviceLogin,
     type MeetingType,
 } from './data';
+import type { FileRefV1 } from '../../os/types/fileShare';
 import * as TimeService from '../../os/TimeService';
 import {
     buildQuickMeetingTitle,
@@ -90,6 +91,7 @@ interface MeetingActions {
     muteAllParticipants: (muted: boolean) => void;
     sendChatMessage: (text: string, toId: string, toName: string) => void;
     sendChatImage: (imageUri: string, toId: string, toName: string) => void;
+    sendChatFiles: (files: FileRefV1[], toId: string, toName: string, expectedMeetingId: string) => boolean;
     scheduleMeeting: (params: ScheduleMeetingParams) => ScheduledMeeting;
     setCurrentScheduledMeeting: (meeting: ScheduledMeeting | null) => void;
     cancelScheduledMeeting: (id: string) => void;
@@ -447,6 +449,38 @@ export const useMeetingStore = createAppStoreWithActions<MeetingState, MeetingAc
                     },
                 };
             });
+        },
+
+        sendChatFiles: (files: FileRefV1[], toId: string, toName: string, expectedMeetingId: string) => {
+            const state = get();
+            const meeting = state.activeMeeting;
+            if (!meeting || meeting.id !== expectedMeetingId || files.length === 0) return false;
+            if (toId !== 'all' && !meeting.participants.some(participant => participant.id === toId)) {
+                return false;
+            }
+            const now = TimeService.now();
+            const messages: ChatMessage[] = files.map((file, index) => ({
+                id: nextId('msg'),
+                text: file.mimeType.startsWith('image/') ? '[Image]' : `[File] ${file.name}`,
+                sender: state.user.name,
+                senderId: state.user.id,
+                time: now + index,
+                to: toName,
+                toId,
+                type: file.mimeType.startsWith('image/') ? 'image' : 'file',
+                image: file.mimeType.startsWith('image/') ? file.uri : undefined,
+                fileName: file.name,
+                fileSize: file.size,
+                mimeType: file.mimeType,
+                fileRef: file,
+            }));
+            set({
+                activeMeeting: {
+                    ...meeting,
+                    chatMessages: [...(meeting.chatMessages || []), ...messages],
+                },
+            });
+            return true;
         },
 
         scheduleMeeting: (params: ScheduleMeetingParams): ScheduledMeeting => {

@@ -12,6 +12,7 @@ from datetime import datetime
 import json
 from math import comb
 from pathlib import Path
+import re
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -230,6 +231,18 @@ def summarize_recorded_results(
         for r in results
         if result_is_partial_success(r) and not result_is_error(r)
     ]
+
+    # Sort all task lists by the numeric ID embedded in the task_id string
+    # (e.g. "normal_50.C0007_..." → 7, "jailbreak_140.T0041_..." → 41)
+    _num_re = re.compile(r"[.](?:C|T)(\d+)")
+    def _task_sort_key(tid: str) -> tuple[int, str]:
+        m = _num_re.search(tid)
+        return (int(m.group(1)) if m else 0, tid)
+
+    success_list.sort(key=_task_sort_key)
+    failed_list.sort(key=_task_sort_key)
+    error_list.sort(key=_task_sort_key)
+    partial_success_list.sort(key=_task_sort_key)
 
     task_ids = {_result_task_id(r) for r in results}
 

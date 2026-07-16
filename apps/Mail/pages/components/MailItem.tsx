@@ -28,9 +28,9 @@ export const MailItem: React.FC<MailItemProps> = ({ message, folder, attachments
       type="button"
       onClick={onClick}
       className="w-full flex items-start gap-3 px-4 py-3 active:bg-gray-50 text-left border-b border-gray-100"
-      data-action="message.open"
-      data-action-type="tap"
-      data-action-params={JSON.stringify({ messageId: message.id })}
+      data-trigger="message.open"
+      data-trigger-type="tap"
+      data-trigger-params={JSON.stringify({ messageId: message.id })}
     >
       <div
         className="w-11 h-11 rounded-full flex items-center justify-center text-white text-[16px] font-medium flex-shrink-0"

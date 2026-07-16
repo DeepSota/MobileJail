@@ -15,6 +15,9 @@ import { now as timeNow } from './TimeService';
 import { realNow } from './TimeService';
 import { SIMULATOR_CONFIG } from './data';
 import { createVolatileOsStore } from './createOsStore';
+import { useOsStateStore } from './OsStateStore';
+import { PermissionService } from './PermissionService';
+import { PERMISSIONS, type PermissionStatus } from './permissions';
 
 export interface LocationCoords {
   latitude: number;
@@ -29,6 +32,27 @@ export interface LocationCoords {
 export interface LocationError {
   code: 1 | 2 | 3; // PERMISSION_DENIED | POSITION_UNAVAILABLE | TIMEOUT
   message: string;
+}
+
+export type LocationAccessFailureReason =
+  | 'system_disabled'
+  | 'permission_denied'
+  | 'permission_denied_forever';
+
+/** Stable error used when OS location policy blocks an App request. */
+export class LocationAccessError extends Error implements GeolocationPositionError {
+  readonly PERMISSION_DENIED = 1;
+  readonly POSITION_UNAVAILABLE = 2;
+  readonly TIMEOUT = 3;
+
+  constructor(
+    readonly code: 1 | 2,
+    readonly reason: LocationAccessFailureReason,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'LocationAccessError';
+  }
 }
 
 export interface LocationConfig {
@@ -180,6 +204,53 @@ function normalizeCity(city?: string | string[]) {
   if (!city) return undefined;
   if (Array.isArray(city)) return city[0];
   return city;
+}
+
+function getActiveAppId(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const os = window.__OS__;
+    const state = typeof os?.getState === 'function' ? os.getState() : os?.state;
+    const appId = String(state?.activeAppId ?? '').trim();
+    return appId || null;
+  } catch {
+    return null;
+  }
+}
+
+function getLocationPermissionStatuses(appId: string): PermissionStatus[] {
+  return [
+    PermissionService.checkPermission(appId, PERMISSIONS.ACCESS_FINE_LOCATION),
+    PermissionService.checkPermission(appId, PERMISSIONS.ACCESS_COARSE_LOCATION),
+  ];
+}
+
+function getLocationAccessError(): LocationAccessError | null {
+  if (!useOsStateStore.getState().settings.global.locationEnabled) {
+    return new LocationAccessError(2, 'system_disabled', '系统定位服务已关闭');
+  }
+
+  const appId = getActiveAppId();
+  if (!appId) return null;
+
+  const statuses = getLocationPermissionStatuses(appId);
+  if (statuses.includes('granted')) return null;
+  if (statuses.includes('denied_forever')) {
+    return new LocationAccessError(1, 'permission_denied_forever', '此应用的位置权限已被永久拒绝');
+  }
+  if (statuses.includes('denied')) {
+    return new LocationAccessError(1, 'permission_denied', '此应用的位置权限已被拒绝');
+  }
+  // Existing Apps that have never requested LOCATION keep their legacy behavior.
+  return null;
+}
+
+function reportLocationAccessError(
+  errorCallback: PositionErrorCallback | null | undefined,
+  error: LocationAccessError,
+): void {
+  if (!errorCallback) return;
+  setTimeout(() => errorCallback(error), 0);
 }
 
 /**
@@ -343,6 +414,12 @@ export function getCurrentPosition(
   errorCallback?: PositionErrorCallback | null,
   options?: PositionOptions
 ): void {
+  const accessError = getLocationAccessError();
+  if (accessError) {
+    reportLocationAccessError(errorCallback, accessError);
+    return;
+  }
+
   const s = useLocationStore.getState();
   if (s.mode === 'simulated') {
     if (s.simulateError) {
@@ -382,6 +459,12 @@ export function watchPosition(
   errorCallback?: PositionErrorCallback | null,
   options?: PositionOptions
 ): number {
+  const accessError = getLocationAccessError();
+  if (accessError) {
+    reportLocationAccessError(errorCallback, accessError);
+    return -1;
+  }
+
   const s = useLocationStore.getState();
   if (s.mode === 'simulated') {
     getCurrentPosition(successCallback, errorCallback, options);
@@ -415,6 +498,9 @@ export async function reverseGeocode(
   longitude: number,
   opts: { radius?: number; extensions?: 'base' | 'all' } = {},
 ): Promise<ReverseGeocodeResult> {
+  const accessError = getLocationAccessError();
+  if (accessError) throw accessError;
+
   const cacheKey = makeReverseGeocodeCacheKey(latitude, longitude, opts);
   const currentTime = geocodeNowMs();
 

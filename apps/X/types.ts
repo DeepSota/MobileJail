@@ -1,3 +1,5 @@
+import type { FileRefV1 } from '@/os/types/fileShare';
+
 export interface XUser {
   // 主键: 不带 @, 保留 case (例如 'OpenAI' / 'MrBeast' / 'xiaoming_dev')。
   // 显示 @handle 时, UI 拼 '@' + id。
@@ -56,9 +58,10 @@ export interface XMessage {
   content: string;
   time: string;
   read: boolean;
-  type?: 'text' | 'image' | 'post';
+  type?: 'text' | 'image' | 'post' | 'file';
   image?: string;
   forwardedPostId?: string;
+  fileRef?: FileRefV1;
 }
 
 export interface XConversation {

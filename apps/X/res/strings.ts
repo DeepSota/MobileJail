@@ -219,6 +219,17 @@ export const strings = {
   share_no_conversations: '暂无对话',
   share_sent: '已发送',
   share_post_unavailable: '帖子不可用',
+  share_file_title: '通过私信发送',
+  share_file_subtitle: '选择最近对话或你关注的联系人',
+  share_file_confirm: '发送',
+  share_file_sending: '正在发送…',
+  share_file_empty: '暂无可发送的联系人',
+  share_file_missing: '文件已不可用',
+  share_file_error: '发送失败，请重试',
+  share_file_recipient_unavailable: '所选接收人已不可用，文件没有发送',
+  share_file_selected: '已选择',
+  chat_file_open: '打开附件',
+  chat_file_unavailable: '附件已不存在或暂时无法打开',
 } as const;
 
 export type StringKey = keyof typeof strings;

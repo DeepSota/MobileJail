@@ -72,6 +72,12 @@ export const strings = {
   contact_deleted_toast: '已删除',
   contact_delete_btn: '删除联系人',
 
+  // EditContactPage
+  edit_contact_title: '编辑联系人',
+  edit_contact_add_phone: '添加电话',
+  edit_contact_add_email: '添加邮箱',
+  edit_contact_add_notes: '添加备注',
+
   // CallDetailPage
   call_detail_title: '通话详情',
   call_log_not_found: '记录不存在',

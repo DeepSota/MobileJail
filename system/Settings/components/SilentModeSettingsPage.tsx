@@ -11,6 +11,7 @@ import { subscribeOsDataRevision } from '../../../os/simState';
 import { strings } from '../res/strings';
 import { stringsEn } from '../res/strings.en';
 import { useAppStrings } from '@/os/useAppStrings';
+import { useSettingsGestures } from '../hooks/useSettingsGestures';
 type RingMode = 'normal' | 'silent' | 'dnd';
 
 function getRingMode(): RingMode {
@@ -22,6 +23,7 @@ function getRingMode(): RingMode {
 
 export const SilentModeSettingsPage: React.FC = () => {
   const s = useAppStrings(strings, stringsEn);
+  const { bindTap } = useSettingsGestures();
   const mode = useSyncExternalStore(
     subscribeOsDataRevision,
     () => getRingMode(),
@@ -68,7 +70,11 @@ export const SilentModeSettingsPage: React.FC = () => {
   return (
     <div className="h-full bg-app-bg flex flex-col">
       <SettingsHeader title={s.silent_dnd} />
-      <div className="flex-1 overflow-y-auto no-scrollbar pb-8">
+      <div
+        className="flex-1 overflow-y-auto no-scrollbar pb-8"
+        data-scroll-container="main"
+        data-scroll-direction="vertical"
+      >
         <PreferenceCategory title={s.silent_mode}>
           {options.map((opt, idx) => {
             const selected = opt.value === mode;
@@ -79,7 +85,13 @@ export const SilentModeSettingsPage: React.FC = () => {
                 summary={opt.summary}
                 showChevron={false}
                 showDivider={idx < options.length - 1}
-                onClick={() => setMode(opt.value)}
+                itemProps={bindTap<HTMLDivElement>(
+                  { kind: 'action', id: 'settings.sound.mode.select.value' },
+                  {
+                    params: { mode: opt.value },
+                    onTrigger: () => setMode(opt.value),
+                  },
+                )}
               >
                 {selected ? <IcCheck size={18} className="text-app-primary" /> : null}
               </PreferenceItem>
@@ -144,4 +156,3 @@ export const SilentModeSettingsPage: React.FC = () => {
 };
 
 export default SilentModeSettingsPage;
-

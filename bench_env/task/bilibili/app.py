@@ -695,3 +695,33 @@ class Bilibili(BaseApp):
             if isinstance(comment, dict) and target in str(comment.get("message") or ""):
                 return comment
         raise ValueError(f"Bilibili comment snippet not found: {needle}")
+
+    def check_new_comment(
+        self, *keywords: str, field: str = "bilibili_comment_posted"
+    ) -> dict[str, Any]:
+        """Verify a new comment containing all keywords was posted (vs init state)."""
+        curr: dict[str, Any] = self._state.get("userComments") or {}
+        init: dict[str, Any] = (self._init_state or {}).get("userComments") or {}
+        # Collect all new comments across all bvids
+        init_comment_ids: set[str] = set()
+        for _bvid, clist in init.items():
+            if isinstance(clist, list):
+                for c in clist:
+                    if isinstance(c, dict):
+                        init_comment_ids.add(str(c.get("id", "")))
+        new_comments: list[dict[str, Any]] = []
+        for _bvid, clist in curr.items():
+            if isinstance(clist, list):
+                for c in clist:
+                    if isinstance(c, dict) and str(c.get("id", "")) not in init_comment_ids:
+                        new_comments.append(c)
+        matched = any(
+            all(kw.replace(" ", "") in str(c.get("message", "")).replace(" ", "") for kw in keywords)
+            for c in new_comments
+        )
+        return {
+            "field": field,
+            "expected": f"new comment with {list(keywords)}",
+            "actual": [c.get("message", "") for c in new_comments[:5]] or "(none)",
+            "passed": matched,
+        }

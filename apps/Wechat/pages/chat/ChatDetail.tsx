@@ -13,6 +13,8 @@ import { SIMULATOR_CONFIG } from '@/os/data';
 import { dimens } from '../../res/dimens';
 import { realNow } from '../../../../os/TimeService';
 import { WechatSmartImage } from '../../components/WechatSmartImage';
+import { SharedFileImage } from '../../../../os/components/SharedFileImage';
+import { createViewIntent, openFileRefInViewer } from '../../../../os/FileShareService';
 import type { Message } from '../../types';
 import { resolveChatPeerByWxid } from '../../utils/resolveChatPeer';
 
@@ -96,11 +98,24 @@ const ChatBubble = React.memo<ChatBubbleProps>(function ChatBubble({
           className="max-w-[40%] rounded-[4px] overflow-hidden shadow-sm active:opacity-90 bg-transparent"
           {...buildImageGestureProps(msg)}
         >
-          <WechatSmartImage
-            src={msg.content}
-            className="block w-auto h-auto max-w-full max-h-[11rem] object-contain"
-            alt=""
-          />
+          {msg.fileRef ? (
+            <span className="relative block min-w-24 min-h-20 bg-(--app-c-tw-bg-gray-100)">
+              <span className="absolute inset-0 grid place-items-center px-2 text-center text-[12px] text-(--app-c-tw-text-gray-500)">
+                {t.file_attachment_unavailable}
+              </span>
+              <SharedFileImage
+                fileRef={msg.fileRef}
+                className="relative z-10 block w-auto h-auto max-w-full max-h-[11rem] object-contain"
+                alt={msg.fileRef.name}
+              />
+            </span>
+          ) : (
+            <WechatSmartImage
+              src={msg.content}
+              className="block w-auto h-auto max-w-full max-h-[11rem] object-contain"
+              alt=""
+            />
+          )}
         </button>
       ) : msg.type === 'file' ? (() => {
         const fileGestureProps = buildFileGestureProps(msg);
@@ -233,9 +248,6 @@ export const ChatDetail: React.FC = () => {
     sendPat: s.sendPat,
     transfers: s.transfers ?? [],
     receiveTransfer: s.receiveTransfer,
-    sendPat: s.sendPat,
-    transfers: s.transfers,
-    receiveTransfer: s.receiveTransfer,
   })));
   const { bindDoubleTap, bindTap, bindBack, go } = useWechatGestures();
 
@@ -262,6 +274,7 @@ export const ChatDetail: React.FC = () => {
   }, [chat?.messages, previewMessageId]);
 
   const [inputValue, setInputValue] = useState('');
+  const [attachmentToast, setAttachmentToast] = useState('');
   const [showChatPlusMenu, setShowChatPlusMenu] = useState(false);
   const [chatPlusMenuPage, setChatPlusMenuPage] = useState(0);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
@@ -356,6 +369,13 @@ export const ChatDetail: React.FC = () => {
     }
   };
 
+  const showAttachmentUnavailable = useCallback(() => {
+    setAttachmentToast(t.file_attachment_unavailable);
+    window.setTimeout(() => {
+      setAttachmentToast(current => current === t.file_attachment_unavailable ? '' : current);
+    }, 2500);
+  }, [t.file_attachment_unavailable]);
+
   const buildAvatarGestureProps = useCallback((wxid: string) => {
     const userProfileTriggerProps = bindTap<HTMLImageElement>('userProfile.open', {
       params: { id: wxid },
@@ -379,19 +399,37 @@ export const ChatDetail: React.FC = () => {
 
   const buildImageGestureProps = useCallback((msg: Message) => {
     if (!targetWxid) return {};
+    if (msg.fileRef) {
+      return bindTap<HTMLButtonElement>({ kind: 'action', id: 'chat.attachment.open' }, {
+        params: { id: msg.id },
+        onTrigger: () => {
+          const intent = createViewIntent(msg.fileRef!);
+          const opened = intent ? window.__OS__?.startActivity('gallery', intent) : false;
+          if (!opened) showAttachmentUnavailable();
+        },
+      });
+    }
     return bindTap<HTMLButtonElement>('chat.imagePreview.open', {
       params: { id: targetWxid, preview: msg.id },
     });
-  }, [bindTap, targetWxid]);
+  }, [bindTap, showAttachmentUnavailable, targetWxid]);
 
   const buildFileGestureProps = useCallback((msg: Message) => {
     if (!targetWxid) return {};
+    if (msg.fileRef) {
+      return bindTap<HTMLButtonElement>({ kind: 'action', id: 'chat.attachment.open' }, {
+        params: { id: msg.id },
+        onTrigger: () => {
+          if (!openFileRefInViewer(msg.fileRef!)) showAttachmentUnavailable();
+        },
+      });
+    }
     const isImage = msg.mimeType?.startsWith('image/');
     if (!isImage) return {};
     return bindTap<HTMLButtonElement>('chat.imagePreview.open', {
       params: { id: targetWxid, preview: msg.id },
     });
-  }, [bindTap, targetWxid]);
+  }, [bindTap, showAttachmentUnavailable, targetWxid]);
 
   if (!chat) {
     return <div className="min-h-screen bg-app-bg pt-20 text-center text-(--app-c-tw-text-gray-400)">未找到联系人</div>;
@@ -573,6 +611,15 @@ export const ChatDetail: React.FC = () => {
               />
             ))}
           </div>
+        </div>
+      )}
+
+      {attachmentToast && (
+        <div
+          role="status"
+          className="absolute left-1/2 bottom-20 z-[260] -translate-x-1/2 rounded-full bg-black/75 px-4 py-2 text-[13px] text-white shadow-lg"
+        >
+          {attachmentToast}
         </div>
       )}
 

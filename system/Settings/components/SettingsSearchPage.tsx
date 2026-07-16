@@ -90,7 +90,7 @@ export const SettingsSearchPage: React.FC = () => {
 
     out.sort((a, b) => b.score - a.score || a.title.localeCompare(b.title, 'zh-Hans-CN'));
     return out.slice(0, 60);
-  }, [allPages, query]);
+  }, [allPages, mainTargetPageTitleMap, query]);
 
   const hasQuery = query.trim().length > 0;
   const hasData = !!pages;
@@ -114,6 +114,9 @@ export const SettingsSearchPage: React.FC = () => {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              data-action="settings.search.query.input"
+              data-action-type="input"
+              data-action-params={JSON.stringify({ value: query })}
               placeholder={s.search_settings}
               className="flex-1 bg-transparent outline-none text-[14px] text-app-text placeholder:text-gray-400"
               autoFocus
@@ -123,7 +126,10 @@ export const SettingsSearchPage: React.FC = () => {
                 type="button"
                 className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center active:bg-gray-200"
                 aria-label={s.clear}
-                onClick={() => setQuery('')}
+                {...bindTap<HTMLButtonElement>(
+                  { kind: 'action', id: 'settings.search.clear' },
+                  { onTrigger: () => setQuery('') },
+                )}
               >
                 <IcClose size={14} className="text-app-text-muted" />
               </button>
@@ -132,7 +138,11 @@ export const SettingsSearchPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto no-scrollbar pb-8">
+      <div
+        className="flex-1 overflow-y-auto no-scrollbar pb-8"
+        data-scroll-container="main"
+        data-scroll-direction="vertical"
+      >
         {!hasQuery ? (
           <div className="px-6 py-10 text-[13px] text-gray-400">{s.enter_keywords_to_search}</div>
         ) : !hasData ? (

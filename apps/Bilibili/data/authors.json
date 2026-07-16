@@ -261748,5 +261748,29 @@
       }
     ],
     "location": "山东"
+  },
+  "800000068401": {
+    "mid": 800000068401,
+    "name": "佛山无影脚",
+    "face": "./images/avatars/default.svg",
+    "sign": "功夫爱好者，分享传统武术与现代格斗",
+    "level": 4,
+    "vip": {
+      "status": 0,
+      "label": "",
+      "type": -1
+    },
+    "official": {
+      "role": 0,
+      "title": "",
+      "type": -1
+    },
+    "top_photo": "",
+    "live_room": null,
+    "follower": 156,
+    "following": 23,
+    "likes": 0,
+    "videos": [],
+    "location": "广东"
   }
 }

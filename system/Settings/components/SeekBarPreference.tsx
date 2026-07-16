@@ -45,6 +45,9 @@ export const SeekBarPreference: React.FC<SeekBarPreferenceProps> = ({
           step={1}
           value={value}
           onChange={setValue}
+          data-action="settings.preference.slider.input"
+          data-action-type="tap"
+          data-action-params={JSON.stringify({ key: settingKey, value })}
           className="w-full"
         />
       </div>

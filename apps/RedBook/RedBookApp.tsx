@@ -49,6 +49,7 @@ import { NewFollowersPage } from './pages/NewFollowersPage';
 import { CommentsAndAtPage } from './pages/CommentsAndAtPage';
 import { AddFriendPage } from './pages/AddFriendPage';
 import { HistoryPage } from './pages/HistoryPage';
+import { ShareFilePage } from './pages/ShareFilePage';
 
 export const RedBookApp: React.FC = () => {
   const { isDark } = useDarkMode();
@@ -99,6 +100,7 @@ export const RedBookApp: React.FC = () => {
             <Route path="publish/photo/final" element={<PublishPhotoFinalPage />} />
             <Route path="search" element={<SearchPage />} />
             <Route path="chat/:userId" element={<ChatPage />} />
+            <Route path="share" element={<ShareFilePage />} />
             <Route path="chat/:userId/settings" element={<ChatSettingsPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="settings/storage" element={<StoragePage />} />

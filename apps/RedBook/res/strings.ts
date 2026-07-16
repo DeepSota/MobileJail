@@ -433,6 +433,18 @@ export const strings = {
   collected_your_note: '收藏了你的笔记',
   liked_your_comment: '赞了你的评论',
   no_messages: '暂无消息',
+  file_share_title: '发送给好友',
+  file_share_subtitle: '选择私信会话或已关注用户',
+  file_share_confirm: '发送',
+  file_share_sending: '正在发送…',
+  file_share_selected: '已选择',
+  file_share_empty: '暂无可发送的用户',
+  file_share_missing: '文件已不可用',
+  file_share_error: '发送失败，请重试',
+  file_share_recipient_unavailable: '该用户已不可用，文件未发送',
+  file_share_following_contact: '已关注',
+  file_attachment_unavailable: '文件已不存在或无法打开',
+  file_attachment_open: '打开附件',
 
   // ── CommentsAndAtPage ──
   replied_to_you: '回复了你:',
@@ -547,6 +559,7 @@ export const strings = {
   followed: '已关注',
   everyone_searching: '大家都在搜: "显瘦穿搭"',
   english: 'English',
+  chat_unknown_user: '用户 {userId}',
 } as const;
 
 export type StringKey = keyof typeof strings;

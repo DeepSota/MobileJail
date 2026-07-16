@@ -435,6 +435,18 @@ export const stringsEn: Partial<Record<StringKey, string>> = {
   collected_your_note: 'collected your note',
   liked_your_comment: 'liked your comment',
   no_messages: 'No messages',
+  file_share_title: 'Send to a friend',
+  file_share_subtitle: 'Choose a conversation or followed user',
+  file_share_confirm: 'Send',
+  file_share_sending: 'Sending…',
+  file_share_selected: 'Selected',
+  file_share_empty: 'No eligible recipients available',
+  file_share_missing: 'The file is no longer available',
+  file_share_error: 'Could not send. Try again.',
+  file_share_recipient_unavailable: 'This user is no longer available. The file was not sent.',
+  file_share_following_contact: 'Following',
+  file_attachment_unavailable: 'This file no longer exists or cannot be opened.',
+  file_attachment_open: 'Open attachment',
 
   // ── CommentsAndAtPage ──
   replied_to_you: 'replied to you:',
@@ -549,4 +561,5 @@ export const stringsEn: Partial<Record<StringKey, string>> = {
   followed: 'Followed',
   everyone_searching: 'Everyone is searching: "Slimming Outfits"',
   english: 'English',
+  chat_unknown_user: 'User {userId}',
 };

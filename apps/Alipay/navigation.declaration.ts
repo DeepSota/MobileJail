@@ -113,9 +113,45 @@ export const NAVIGATION_DECLARATION = {
       params: {},
       entryPoint: 'none',
       scrollContainers: MAIN_SCROLL,
-      uiStates: [{ id: 'chat.base', search: {}, description: '聊天页面' }],
+      uiStates: [{
+        id: 'chat.base',
+        search: {},
+        description: '聊天页面',
+        actions: [{
+          id: 'chat.file.open',
+          label: '打开聊天附件',
+          scope: 'item',
+          behavior: 'other',
+          paramsSchema: { fileId: 'string' },
+        }],
+      }],
       queryParams: { id: 'string', type: 'string' },
       description: '聊天页面',
+    },
+    {
+      path: '/share',
+      component: 'ShareFilePage',
+      params: {},
+      entryPoint: 'deepLink',
+      scrollContainers: MAIN_SCROLL,
+      uiStates: [
+        {
+          id: 'share.file.base',
+          search: {},
+          description: '选择支付宝联系人发送文件',
+          actions: [
+            {
+              id: 'share.file.recipient.select',
+              label: '选择文件接收联系人',
+              scope: 'item',
+              behavior: 'other',
+              paramsSchema: { id: 'string' },
+            },
+          ],
+        },
+      ],
+      queryParams: {},
+      description: '联系人文件分享',
     },
     {
       path: '/chat/:id/media-picker',
@@ -1492,6 +1528,7 @@ export const NAVIGATION_DECLARATION = {
     {
       id: 'transfer.success.done',
       from: '/pay/transfer/success',
+      to: '/pay',
       cases: [
         { when: { op: 'eq', left: { ref: 'search', key: 'src' }, right: '/pay' }, to: '/pay', search: {} },
         { when: { op: 'eq', left: { ref: 'search', key: 'src' }, right: '/balance' }, to: '/balance', search: {} },
@@ -1890,6 +1927,17 @@ export const NAVIGATION_DECLARATION = {
       ui: { placement: 'content', icon: 'chat_open', gesture: 'tap' },
     },
     {
+      id: 'share.file.send',
+      from: '/share',
+      to: '/chat',
+      search: {},
+      searchParams: { id: 'string', type: 'string' },
+      mode: 'replace',
+      params: {},
+      label: '确认发送文件并打开聊天',
+      ui: { placement: 'content', icon: 'send', gesture: 'tap' },
+    },
+    {
       id: 'chat.mediaPicker.open',
       from: '/chat',
       to: '/chat/:id/media-picker',
@@ -1930,4 +1978,3 @@ export const NAVIGATION_DECLARATION = {
 } as const satisfies NavigationDeclaration;
 
 export type TransitionId = (typeof NAVIGATION_DECLARATION.transitions)[number]['id'];
-

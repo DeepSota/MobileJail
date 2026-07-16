@@ -1,5 +1,5 @@
 import { useRedBookStrings } from '../hooks/useRedBookStrings';
-import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, memo } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, memo, useCallback } from 'react';
 import * as TimeService from '@/os/TimeService';
 import * as MediaService from '../../../os/MediaService';
 import { useParams } from 'react-router-dom';
@@ -11,6 +11,9 @@ import { useShallow } from 'zustand/react/shallow';
 import { useRedBookGestures } from '../hooks/useRedBookGestures';
 import { KeyboardService } from '../../../os/keyboard/KeyboardService';
 import { useLocale } from '@/apps/RedBook/locale';
+import { SharedFileImage } from '@/os/components/SharedFileImage';
+import { createViewIntent, openFileRefInViewer } from '@/os/FileShareService';
+import type { FileRefV1 } from '@/os/types/fileShare';
 
 // Import assets
 import voiceIcon from '../assets/chat/voice.png';
@@ -22,8 +25,9 @@ type DisplayMessage = {
   text: string;
   isMe: boolean;
   time: string;
-  type: 'text' | 'note' | 'image';
+  type: 'text' | 'note' | 'image' | 'file';
   image?: string;
+  fileRef?: FileRefV1;
   noteData?: { image: string; title: string; authorAvatar: string; author: string };
 };
 
@@ -31,9 +35,22 @@ type MessageItemProps = {
   msg: DisplayMessage;
   targetUserAvatar: string;
   userAvatar: string;
+  onAttachmentUnavailable: () => void;
 };
 
-const MessageItem = memo<MessageItemProps>(function MessageItem({ msg, targetUserAvatar, userAvatar }) {
+const MessageItem = memo<MessageItemProps>(function MessageItem({ msg, targetUserAvatar, userAvatar, onAttachmentUnavailable }) {
+  const s = useRedBookStrings();
+  const { bindTap } = useRedBookGestures();
+  const openFile = () => {
+    if (!msg.fileRef) return;
+    if (msg.fileRef.mimeType.startsWith('image/')) {
+      const intent = createViewIntent(msg.fileRef);
+      const opened = intent ? window.__OS__?.startActivity('gallery', intent) : false;
+      if (!opened) onAttachmentUnavailable();
+      return;
+    }
+    if (!openFileRefInViewer(msg.fileRef)) onAttachmentUnavailable();
+  };
   return (
     <div className={`flex ${msg.isMe ? 'justify-end' : 'justify-start'} items-start gap-2 relative`}>
       {!msg.isMe && (
@@ -46,12 +63,49 @@ const MessageItem = memo<MessageItemProps>(function MessageItem({ msg, targetUse
           </div>
         </div>
       )}
-      {msg.type === 'image' && msg.image ? (
-        <div className={`max-w-[70%] rounded-[12px] overflow-hidden ${
+      {msg.type === 'image' && msg.fileRef ? (
+        <button
+          type="button"
+          {...bindTap(
+            { kind: 'action', id: 'chat.file.open' },
+            { params: { fileId: msg.fileRef.fileId }, onTrigger: openFile },
+          )}
+          aria-label={s.file_attachment_open}
+          className={`max-w-[70%] rounded-[12px] overflow-hidden ${
           msg.isMe ? 'rounded-br-sm' : 'rounded-bl-sm'
-        }`}>
+        }`}
+        >
+          <span className="relative block min-w-24 min-h-20 bg-[#f5f5f5]">
+            <span className="absolute inset-0 grid place-items-center px-2 text-center text-[12px] text-[#999]">
+              {s.file_attachment_unavailable}
+            </span>
+            <SharedFileImage fileRef={msg.fileRef} className="relative z-10 max-h-[11rem] object-contain w-full" alt={msg.fileRef.name} />
+          </span>
+        </button>
+      ) : msg.type === 'image' && msg.image ? (
+        <div className={`max-w-[70%] rounded-[12px] overflow-hidden ${msg.isMe ? 'rounded-br-sm' : 'rounded-bl-sm'}`}>
           <img src={msg.image} className="max-h-[11rem] object-contain w-full" alt="" />
         </div>
+      ) : msg.type === 'file' && msg.fileRef ? (
+        <button
+          type="button"
+          {...bindTap(
+            { kind: 'action', id: 'chat.file.open' },
+            { params: { fileId: msg.fileRef.fileId }, onTrigger: openFile },
+          )}
+          aria-label={`${s.file_attachment_open}: ${msg.fileRef.name}`}
+          className={`max-w-[17rem] min-w-[14rem] px-3 py-3 rounded-[14px] flex items-center gap-3 text-left ${msg.isMe ? 'bg-app-primary text-white rounded-br-sm' : 'bg-[#f5f5f5] text-app-text rounded-bl-sm'}`}
+        >
+          <span className={`w-11 h-12 rounded-lg grid place-items-center text-[11px] font-bold uppercase shrink-0 ${msg.isMe ? 'bg-white/20' : 'bg-white text-app-primary'}`}>
+            {msg.fileRef.name.split('.').pop()?.slice(0, 4) || 'FILE'}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[14px] font-medium truncate">{msg.fileRef.name}</span>
+            <span className={`block mt-1 text-[11px] ${msg.isMe ? 'text-white/70' : 'text-gray-400'}`}>
+              {msg.fileRef.size >= 1024 * 1024 ? `${(msg.fileRef.size / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.ceil(msg.fileRef.size / 1024))} KB`}
+            </span>
+          </span>
+        </button>
       ) : msg.type === 'note' && msg.noteData ? (
         <div className="max-w-[240px] bg-[#f5f5f5] rounded-[12px] overflow-hidden shadow-sm border border-gray-50">
           <div className="relative aspect-[4/5] w-full">
@@ -116,6 +170,7 @@ export const ChatPage: React.FC = () => {
 
   const [input, setInput] = useState('');
   const [pickingImage, setPickingImage] = useState(false);
+  const [attachmentToast, setAttachmentToast] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -162,25 +217,33 @@ export const ChatPage: React.FC = () => {
     }
   };
 
+  const showAttachmentUnavailable = useCallback(() => {
+    setAttachmentToast(s.file_attachment_unavailable);
+    window.setTimeout(() => {
+      setAttachmentToast(current => current === s.file_attachment_unavailable ? '' : current);
+    }, 2500);
+  }, [s.file_attachment_unavailable]);
+
   const displayMessages = useMemo(() => (currentChat?.messages || []).map(msg => ({
       id: msg.id,
       text: msg.content,
       isMe: msg.senderId === user.id,
       time: TimeService.fromTimestamp(msg.timestamp).toLocaleTimeString(locale === 'en' ? 'en-US' : undefined, { hour: '2-digit', minute: '2-digit' }),
-      type: msg.type as 'text' | 'note' | 'image',
+      type: msg.type as 'text' | 'note' | 'image' | 'file',
       image: msg.image,
+      fileRef: msg.fileRef,
       noteData: msg.type === 'note' && msg.forwardedNoteId ? {
         image: msg.forwardedNoteImage || '',
         title: msg.forwardedNoteTitle || '',
         authorAvatar: msg.forwardedNoteAuthorAvatar || '',
         author: msg.forwardedNoteAuthor || '',
       } : undefined as { image: string; title: string; authorAvatar: string; author: string } | undefined
-  })), [currentChat?.messages, user.id]);
+  })), [currentChat?.messages, locale, user.id]);
 
   if (!resolvedTarget) return <div className="h-full flex items-center justify-center">{s.user_not_found}</div>;
 
   return (
-    <div className="h-full flex flex-col bg-app-surface">
+    <div className="relative h-full flex flex-col bg-app-surface">
       {/* Header */}
       <div className="flex items-center justify-between px-3 bg-app-surface border-b border-gray-100 flex-shrink-0 z-10 sticky top-0 pt-10 pb-2">
           <div className="flex items-center gap-2">
@@ -217,6 +280,7 @@ export const ChatPage: React.FC = () => {
                   msg={msg}
                   targetUserAvatar={resolvedTarget.avatar}
                   userAvatar={user.avatar}
+                  onAttachmentUnavailable={showAttachmentUnavailable}
               />
           ))}
 
@@ -276,6 +340,11 @@ export const ChatPage: React.FC = () => {
             )}
           </div>
       </div>
+      {attachmentToast && (
+        <div role="status" className="absolute left-1/2 bottom-20 z-50 -translate-x-1/2 rounded-full bg-black/75 px-4 py-2 text-[13px] text-white shadow-lg">
+          {attachmentToast}
+        </div>
+      )}
     </div>
   );
 };

@@ -488,6 +488,24 @@ export const strings = {
   // ── Edit Meeting Page ──
   edit_meeting_title: '修改会议预定',
   edit_meeting_confirm: '确认修改',
+
+  // ── File sharing to an active meeting ──
+  file_share_title: '发送到会议',
+  file_share_no_meeting_title: '当前没有进行中的会议',
+  file_share_no_meeting_body: '请先加入或发起会议，再把文件发送给参会者。',
+  file_share_missing: '分享文件已失效',
+  file_share_files: '待发送文件',
+  file_share_all_short: '全员',
+  file_share_send: '发送',
+  file_share_sending: '正在复制并发送…',
+  file_share_copy_failed: '文件复制失败，请确认源文件仍然可用后重试。',
+  file_share_meeting_changed: '原会议已结束或已切换，文件没有发送。',
+  file_share_recipient_unavailable: '所选参会者已离开会议，请重新选择接收对象。',
+  file_attachment_unavailable: '附件已不存在或暂时无法打开',
+  about_check_update: '检查更新',
+  about_terms: '用户协议',
+  about_privacy: '隐私政策',
+  about_copyright: '腾讯会议模拟应用 · 仅用于 MobileJail 训练与评测',
 } as const;
 
 export type StringKey = keyof typeof strings;

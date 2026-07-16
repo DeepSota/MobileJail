@@ -100,9 +100,10 @@ class SerialRunner(BaseRunner):
                                 logger.info(f"[{episode_idx}/{total_episodes}] {task.id}{trial_info}")
                             
                             result = await self.run_episode(
-                                self.env, self.agent, current_task, self.config.get_max_steps(current_task), 
+                                self.env, self.agent, current_task, self.config.get_max_steps(current_task),
                                 self.recorder, trial_id=trial, evaluator=self.evaluator,
                                 loop_threshold=self.config.loop_detect,
+                                wall_timeout_s=self.config.episode_timeout,
                             )
                             results.append(result)
                             

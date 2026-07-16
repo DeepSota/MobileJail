@@ -5,6 +5,7 @@ import { useAppStrings } from '@/os/useAppStrings';
 import { strings } from '../../res/strings';
 import { stringsEn } from '../../res/strings.en';
 import { pickAvatarColor, isValidEmail } from '../../state';
+import { getRecipientSearchToken, parseRecipientList } from '../../utils/recipients';
 
 interface ContactOption {
   displayName: string;
@@ -51,14 +52,16 @@ export const RecipientPicker: React.FC<RecipientPickerProps> = ({
   const allContacts = useMemo(() => allContactEmails(), []);
 
   const filtered = useMemo(() => {
-    const q = value.trim().toLowerCase();
+    const q = getRecipientSearchToken(value).toLowerCase();
     if (!q) return allContacts;
     return allContacts.filter(
       (c) => c.displayName.toLowerCase().includes(q) || c.email.toLowerCase().includes(q),
     );
   }, [allContacts, value]);
 
-  const suggest = value.trim().length > 0 && filtered.length > 0;
+  const suggest = getRecipientSearchToken(value).length > 0 && filtered.length > 0;
+  const recipients = parseRecipientList(value);
+  const recipientsValid = recipients.length > 0 && recipients.every(isValidEmail);
 
   return (
     <div className="relative">
@@ -92,7 +95,7 @@ export const RecipientPicker: React.FC<RecipientPickerProps> = ({
           ))}
         </div>
       )}
-      <span className="sr-only">{isValidEmail(value) ? '' : s.compose_invalid_recipient_body}</span>
+      <span className="sr-only">{recipientsValid ? '' : s.compose_invalid_recipient_body}</span>
     </div>
   );
 };

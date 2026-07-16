@@ -45,6 +45,34 @@ import { CollapsingToolbar, CollapsingLargeTitle, TOOLBAR_SPACER_HEIGHT } from '
 import * as TimeService from '@/os/TimeService';
 import { useGalleryGestures } from './hooks/useGalleryGestures';
 import { ensureMediaProviderRegistered } from '../../os/providers/MediaProvider';
+import {
+  isPrivateAttachmentPath,
+  resolveIntentImageSource,
+  type IntentImageSource,
+} from './intentImageSource';
+import { shareImagesAsIntent } from './shareImages';
+
+type GalleryToastState = { message: string; visible: boolean };
+
+function useGalleryToast() {
+  const [toast, setToast] = useState<GalleryToastState>({ message: '', visible: false });
+  const timerRef = useRef<number | null>(null);
+
+  const showToast = useCallback((message: string) => {
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    setToast({ message, visible: true });
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = null;
+      setToast({ message: '', visible: false });
+    }, 2000);
+  }, []);
+
+  useEffect(() => () => {
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+  }, []);
+
+  return { toast, showToast };
+}
 
 // ============================================================================
 // Favorites Storage (backed by MediaProvider)
@@ -236,7 +264,8 @@ const AsyncImage: React.FC<{
   className?: string;
   alt?: string;
   onClick?: () => void;
-}> = ({ path, fallbackUri, className, alt, onClick }) => {
+  errorLabel?: string;
+}> = ({ path, fallbackUri, className, alt, onClick, errorLabel }) => {
   const [src, setSrc] = useState<string | null>(fallbackUri || null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -268,7 +297,7 @@ const AsyncImage: React.FC<{
     return () => { mounted = false; };
   }, [path, fallbackUri]);
   
-  if (loading || !src) {
+  if (loading) {
     return (
       <div className={`${className} bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center`}>
         <div className="w-6 h-6 rounded-full border-2 border-slate-300 border-t-slate-500 animate-spin" />
@@ -276,10 +305,11 @@ const AsyncImage: React.FC<{
     );
   }
   
-  if (error) {
+  if (error || !src) {
     return (
-      <div className={`${className} bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center`}>
+      <div className={`${className} bg-gradient-to-br from-slate-100 to-slate-200 flex flex-col gap-2 items-center justify-center text-center`}>
         <IcImage size={24} className="text-slate-400" />
+        {errorLabel ? <span className="px-3 text-[12px] text-slate-500">{errorLabel}</span> : null}
       </div>
     );
   }
@@ -486,6 +516,7 @@ const PhotosPage: React.FC<{ onSelectModeChange?: (active: boolean) => void }> =
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [scrollTop, setScrollTop] = useState(0);
+  const { toast, showToast } = useGalleryToast();
 
   useEffect(() => {
     onSelectModeChange?.(selectMode);
@@ -662,12 +693,11 @@ const PhotosPage: React.FC<{ onSelectModeChange?: (active: boolean) => void }> =
           <button
             onClick={() => {
               const paths = Array.from(selected);
-              if (paths.length === 0) return;
-              shareImagesAsIntent(paths);
+              if (!shareImagesAsIntent(paths)) showToast(s.share_failed);
             }}
             className="flex flex-col items-center gap-1.5 px-4 active:opacity-60"
             data-action="gallery.select.share"
-            data-action-type="open"
+            data-action-type="tap"
           >
             <IcShare size={22} className="text-slate-700" />
             <span className="text-[11px] text-slate-700">{s.action_share}</span>
@@ -693,6 +723,7 @@ const PhotosPage: React.FC<{ onSelectModeChange?: (active: boolean) => void }> =
         onConfirm={confirmBatchDelete}
         onCancel={() => setShowDeleteConfirm(false)}
       />
+      <Toast message={toast.message} visible={toast.visible} />
     </div>
   );
 };
@@ -1032,7 +1063,7 @@ const AlbumDetailPage: React.FC = () => {
     const loadedItems = MediaService.getMediaItems({ albumId });
     loadedItems.sort((a, b) => b.createdAt - a.createdAt);
     setItems(loadedItems);
-  }, [albumId]);
+  }, [albumId, s.album_default_name]);
   
   const handleSelect = (path: string) => {
     const newSelected = new Set(selected);
@@ -1163,17 +1194,9 @@ function fsNodeToMediaItem(node: FSNode): MediaItem {
   };
 }
 
-function readIntentImagePath(activityId: string): string | null {
+function readIntentImageSource(activityId: string): IntentImageSource | null {
   const os = window.__OS__;
-  const payload = os?.getIntentPayload?.(activityId);
-  if (!payload || payload.action !== 'ACTION_VIEW') return null;
-  if (payload.type && !payload.type.startsWith('image/')) return null;
-  const data = payload.data || {};
-  const stream = data.stream ?? data.path ?? data.uri;
-  if (Array.isArray(stream)) {
-    return typeof stream[0] === 'string' && stream[0].length > 0 ? stream[0] : null;
-  }
-  return typeof stream === 'string' && stream.length > 0 ? stream : null;
+  return resolveIntentImageSource(os?.getIntentPayload?.(activityId));
 }
 
 function listSiblingImages(targetPath: string): MediaItem[] {
@@ -1191,28 +1214,6 @@ function listSiblingImages(targetPath: string): MediaItem[] {
   return siblings
     .sort((a, b) => b.modifiedAt - a.modifiedAt)
     .map(fsNodeToMediaItem);
-}
-
-// ============================================================================
-// Share helper — fires implicit ACTION_SEND image/*
-// ============================================================================
-function shareImagesAsIntent(paths: string[]): void {
-  if (paths.length === 0) return;
-  const os = window.__OS__;
-  if (!os?.startActivity) return;
-  // 真机：分享走 startActivity + FLAG_ACTIVITY_NEW_TASK；接收方（如微信）的 manifest
-  // 自行决定 launchMode（singleTask 时会留在自己 Task）。Gallery 不期望返回结果。
-  os.startActivity(
-    {
-      action: 'ACTION_SEND',
-      type: 'image/*',
-      data: {
-        stream: paths.length === 1 ? paths[0] : paths,
-        mimeType: 'image/jpeg',
-      },
-    },
-    { newTask: true },
-  );
 }
 
 // ============================================================================
@@ -1423,18 +1424,22 @@ const PhotoViewerPage: React.FC = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [toast, setToast] = useState({ message: '', visible: false });
+  const [didLoadItems, setDidLoadItems] = useState(false);
+  const [reloadVersion, setReloadVersion] = useState(0);
+  const { toast, showToast } = useGalleryToast();
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
 
   // Intent-launched mode: route is /intent/view, no :path param; read from intent payload.
   const isIntentMode = location.pathname.startsWith('/intent/');
-  const intentPath = useMemo(
-    () => (isIntentMode ? readIntentImagePath(activityId) : null),
+  const intentSource = useMemo(
+    () => (isIntentMode ? readIntentImageSource(activityId) : null),
     [isIntentMode, activityId],
   );
   const decodedPath = isIntentMode
-    ? intentPath || ''
+    ? intentSource?.path || ''
     : (path ? decodeURIComponent(path) : '');
+  const isReadOnlyAttachment = Boolean(intentSource?.readOnly)
+    || isPrivateAttachmentPath(decodedPath);
 
   // Parse query params
   const searchParams = new URLSearchParams(location.search);
@@ -1442,15 +1447,11 @@ const PhotoViewerPage: React.FC = () => {
   const from = searchParams.get('from');
   const modal = searchParams.get('modal') as 'more' | 'details' | 'rename' | null;
 
-  const showToast = (message: string) => {
-    setToast({ message, visible: true });
-    setTimeout(() => setToast({ message: '', visible: false }), 2000);
-  };
-
   // useParams returns the URL-decoded :path segment; transitions expect the
   // encoded form (matching photo.open's `encodeURIComponent(item.path)` convention).
   const encodedPath = decodedPath ? encodeURIComponent(decodedPath) : '';
   const openMore = () => {
+    if (isReadOnlyAttachment) return;
     if (isIntentMode) {
       go('photo.intent.modal.more.open');
       return;
@@ -1467,6 +1468,7 @@ const PhotoViewerPage: React.FC = () => {
     go('photo.modal.details.open', { path: encodedPath });
   };
   const openRename = () => {
+    if (isReadOnlyAttachment) return;
     if (isIntentMode) {
       go('photo.intent.modal.rename.open');
       return;
@@ -1477,7 +1479,7 @@ const PhotoViewerPage: React.FC = () => {
   const closeModal = () => back();
 
   const doRename = async (newName: string) => {
-    if (!item) return;
+    if (!item || isReadOnlyAttachment) return;
     const trimmed = newName.trim();
     if (!trimmed || trimmed.includes('/') || trimmed === '.' || trimmed === '..') {
       showToast(s.rename_invalid_name);
@@ -1535,7 +1537,8 @@ const PhotoViewerPage: React.FC = () => {
 
     const index = items.findIndex(i => i.path === decodedPath);
     setCurrentIndex(index >= 0 ? index : 0);
-  }, [decodedPath, albumId, favorites, from, isIntentMode]);
+    setDidLoadItems(true);
+  }, [decodedPath, albumId, favorites, from, isIntentMode, reloadVersion]);
   
   useEffect(() => {
     if (allItems.length > 0 && currentIndex >= 0 && currentIndex < allItems.length) {
@@ -1548,20 +1551,20 @@ const PhotoViewerPage: React.FC = () => {
   }, [allItems, currentIndex, favorites]);
   
   const handleToggleFavorite = () => {
-    if (item) {
+    if (item && !isReadOnlyAttachment) {
       const newState = setFavorite(item.path, !favorites.has(item.path));
       setIsFav(newState);
     }
   };
   
   const handleDelete = () => {
-    if (item) {
+    if (item && !isReadOnlyAttachment) {
       setShowDeleteConfirm(true);
     }
   };
   
   const confirmDelete = async () => {
-    if (item) {
+    if (item && !isReadOnlyAttachment) {
       await MediaService.deleteMedia(item.path);
       setShowDeleteConfirm(false);
       if (allItems.length <= 1) {
@@ -1612,8 +1615,24 @@ const PhotoViewerPage: React.FC = () => {
   
   if (!item) {
     return (
-      <div className="h-full bg-app-surface flex items-center justify-center">
-        <div className="w-8 h-8 rounded-full border-2 border-slate-200 border-t-slate-500 animate-spin" />
+      <div className="h-full bg-app-surface flex flex-col items-center justify-center px-8 text-center">
+        {didLoadItems ? (
+          <>
+            <IcImage size={46} className="text-slate-300" />
+            <div className="mt-4 text-[16px] font-semibold text-slate-800">{s.viewer_image_unavailable}</div>
+            <div className="mt-2 text-[13px] leading-5 text-slate-500">{s.viewer_image_unavailable_hint}</div>
+            <div className="mt-5 flex gap-3">
+              <button type="button" {...bindBack()} className="h-10 rounded-full bg-slate-100 px-5 text-[14px] text-slate-700">
+                {s.viewer_back}
+              </button>
+              <button type="button" onClick={() => { setDidLoadItems(false); setReloadVersion(value => value + 1); }} className="h-10 rounded-full bg-blue-500 px-5 text-[14px] text-white">
+                {s.viewer_retry}
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="w-8 h-8 rounded-full border-2 border-slate-200 border-t-slate-500 animate-spin" />
+        )}
       </div>
     );
   }
@@ -1670,6 +1689,7 @@ const PhotoViewerPage: React.FC = () => {
             fallbackUri={item.uri}
             className="max-w-full max-h-full object-contain"
             alt={item.name}
+            errorLabel={s.viewer_image_unavailable}
           />
         </div>
       </div>
@@ -1681,47 +1701,68 @@ const PhotoViewerPage: React.FC = () => {
         }`}
       >
         <div className="flex items-end justify-between">
-          <button
-            type="button"
-            onClick={() => { if (item) shareImagesAsIntent([item.path]); }}
-            className="flex flex-col items-center gap-1 text-slate-800 active:opacity-60"
-            data-action="gallery.viewer.share"
-            data-action-type="open"
-          >
-            <IcShare size={22} />
-            <span className="text-[11px] font-medium">{s.viewer_send}</span>
-          </button>
-          <button type="button" className="flex flex-col items-center gap-1 text-slate-800 active:opacity-60">
-            <IcEdit size={22} />
-            <span className="text-[11px] font-medium">{s.viewer_edit}</span>
-          </button>
-          <button
-            type="button"
-            onClick={handleToggleFavorite}
-            className={`flex flex-col items-center gap-1 active:opacity-60 ${
-              isFav ? 'text-rose-500' : 'text-slate-800'
-            }`}
-          >
-            <IcHeart size={22} className={isFav ? 'fill-rose-500' : ''} />
-            <span className="text-[11px] font-medium">{s.viewer_favorite}</span>
-          </button>
-          <button
-            type="button"
-            onClick={handleDelete}
-            className="flex flex-col items-center gap-1 text-slate-800 active:text-red-500"
-          >
-            <IcDelete size={22} />
-            <span className="text-[11px] font-medium">{s.viewer_delete}</span>
-          </button>
-          <button
-            type="button"
-            onClick={openMore}
-            className="flex flex-col items-center gap-1 text-slate-800 active:opacity-60"
-            aria-label={s.viewer_more}
-          >
-            <IcMoreHoriz size={22} />
-            <span className="text-[11px] font-medium">{s.viewer_more}</span>
-          </button>
+          {isIntentMode ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (!item || !shareImagesAsIntent([item.path])) showToast(s.share_failed);
+              }}
+              className="flex flex-col items-center gap-1 text-slate-800 active:opacity-60"
+              data-action="gallery.intent.viewer.share"
+              data-action-type="tap"
+            >
+              <IcShare size={22} />
+              <span className="text-[11px] font-medium">{s.viewer_send}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                if (!item || !shareImagesAsIntent([item.path])) showToast(s.share_failed);
+              }}
+              className="flex flex-col items-center gap-1 text-slate-800 active:opacity-60"
+              data-action="gallery.viewer.share"
+              data-action-type="tap"
+            >
+              <IcShare size={22} />
+              <span className="text-[11px] font-medium">{s.viewer_send}</span>
+            </button>
+          )}
+          {!isReadOnlyAttachment && (
+            <>
+              <button type="button" className="flex flex-col items-center gap-1 text-slate-800 active:opacity-60">
+                <IcEdit size={22} />
+                <span className="text-[11px] font-medium">{s.viewer_edit}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleToggleFavorite}
+                className={`flex flex-col items-center gap-1 active:opacity-60 ${
+                  isFav ? 'text-rose-500' : 'text-slate-800'
+                }`}
+              >
+                <IcHeart size={22} className={isFav ? 'fill-rose-500' : ''} />
+                <span className="text-[11px] font-medium">{s.viewer_favorite}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                className="flex flex-col items-center gap-1 text-slate-800 active:text-red-500"
+              >
+                <IcDelete size={22} />
+                <span className="text-[11px] font-medium">{s.viewer_delete}</span>
+              </button>
+              <button
+                type="button"
+                onClick={openMore}
+                className="flex flex-col items-center gap-1 text-slate-800 active:opacity-60"
+                aria-label={s.viewer_more}
+              >
+                <IcMoreHoriz size={22} />
+                <span className="text-[11px] font-medium">{s.viewer_more}</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 

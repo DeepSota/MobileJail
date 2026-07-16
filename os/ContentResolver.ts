@@ -2,6 +2,8 @@ import ContentProvider from './ContentProvider';
 import type { ContentUri, ContentValues, Cursor } from './types/content';
 import BroadcastBus, { ACTION_PROVIDER_CHANGED } from './BroadcastBus';
 import PackageManagerService from './PackageManagerService';
+import { PermissionService } from './PermissionService';
+import { isPermissionId, PERMISSIONS } from './permissions';
 
 type ContentObserver = (uri: ContentUri) => void;
 
@@ -13,6 +15,43 @@ type ParsedContentUri = {
 };
 
 const providers = new Map<string, ContentProvider>();
+
+const SYSTEM_PROVIDER_PERMISSIONS: Record<string, { read?: string; write?: string }> = {
+  contacts: {
+    read: PERMISSIONS.READ_CONTACTS,
+    write: PERMISSIONS.WRITE_CONTACTS,
+  },
+  media: {
+    read: PERMISSIONS.READ_EXTERNAL_STORAGE,
+    write: PERMISSIONS.WRITE_EXTERNAL_STORAGE,
+  },
+  sms: {
+    read: PERMISSIONS.RECEIVE_SMS,
+    write: PERMISSIONS.SEND_SMS,
+  },
+};
+
+export type ContentPermissionDenialReason =
+  | 'manifest_missing'
+  | 'permission_not_declared'
+  | 'runtime_denied'
+  | 'runtime_denied_forever';
+
+/** Stable Android-like security error for protected ContentProvider access. */
+export class PermissionDeniedError extends Error {
+  readonly code = 'PERMISSION_DENIED';
+
+  constructor(
+    readonly appId: string,
+    readonly permission: string,
+    readonly operation: string,
+    readonly uri: ContentUri,
+    readonly reason: ContentPermissionDenialReason,
+  ) {
+    super(`Permission denied: ${appId} cannot ${operation} ${uri}; requires ${permission} (${reason})`);
+    this.name = 'PermissionDeniedError';
+  }
+}
 
 function parseUri(uri: ContentUri): ParsedContentUri {
   const raw = String(uri ?? '').trim();
@@ -38,27 +77,41 @@ function getProviderOrThrow(uri: ContentUri): { provider: ContentProvider; parse
   return { provider, parsed };
 }
 
-function getActiveCallerPermissions(): string[] | null {
+function getActiveCallerAppId(): string | null {
+  if (typeof window === 'undefined') return null;
   try {
     const os = window.__OS__;
     const state = typeof os?.getState === 'function' ? os.getState() : os?.state;
     const appId = String(state?.activeAppId ?? '').trim();
-    if (!appId) return null;
-    const manifest = PackageManagerService.getPackageInfo(appId);
-    return manifest?.permissions ?? [];
+    return appId || null;
   } catch {
     return null;
   }
 }
 
-function warnPermissionIfNeeded(provider: ContentProvider, required: string | undefined, op: string, uri: ContentUri): void {
+function enforcePermissionIfNeeded(required: string | undefined, op: string, uri: ContentUri): void {
   if (!required) return;
-  const granted = getActiveCallerPermissions();
-  if (!granted) return;
-  if (granted.includes(required)) return;
-  console.warn(
-    `[ContentResolver] permission warn-only: missing "${required}" for ${op} ${uri}`,
-  );
+  const appId = getActiveCallerAppId();
+  // No foreground caller means an OS-internal operation. Settings is also a
+  // trusted system surface so it can inspect and maintain protected providers.
+  if (!appId || appId === 'settings') return;
+
+  const manifest = PackageManagerService.getPackageInfo(appId);
+  if (!manifest) {
+    throw new PermissionDeniedError(appId, required, op, uri, 'manifest_missing');
+  }
+  if (!(manifest.permissions as readonly string[] | undefined)?.includes(required)) {
+    throw new PermissionDeniedError(appId, required, op, uri, 'permission_not_declared');
+  }
+
+  if (!isPermissionId(required)) return;
+  const status = PermissionService.checkPermission(appId, required);
+  if (status === 'denied_forever') {
+    throw new PermissionDeniedError(appId, required, op, uri, 'runtime_denied_forever');
+  }
+  if (status === 'denied') {
+    throw new PermissionDeniedError(appId, required, op, uri, 'runtime_denied');
+  }
 }
 
 export const ContentResolver = {
@@ -68,18 +121,21 @@ export const ContentResolver = {
     const key = String(authority ?? '').trim();
     if (!key) throw new Error('[ContentResolver] authority is required');
     if (!provider) throw new Error('[ContentResolver] provider is required');
+    const systemPermissions = SYSTEM_PROVIDER_PERMISSIONS[key];
+    provider.readPermission ??= systemPermissions?.read;
+    provider.writePermission ??= systemPermissions?.write;
     providers.set(key, provider);
   },
 
   query<T = any>(uri: ContentUri, projection?: string[]): Cursor<T> {
     const { provider } = getProviderOrThrow(uri);
-    warnPermissionIfNeeded(provider, provider.readPermission, 'query', uri);
+    enforcePermissionIfNeeded(provider.readPermission, 'query', uri);
     return provider.query(uri, projection) as Cursor<T>;
   },
 
   insert(uri: ContentUri, values: ContentValues): ContentUri {
     const { provider } = getProviderOrThrow(uri);
-    warnPermissionIfNeeded(provider, provider.writePermission, 'insert', uri);
+    enforcePermissionIfNeeded(provider.writePermission, 'insert', uri);
     const result = provider.insert(uri, values);
     ContentResolver.notifyChange(result || uri);
     return result;
@@ -87,7 +143,7 @@ export const ContentResolver = {
 
   update(uri: ContentUri, values: ContentValues, where?: string): number {
     const { provider } = getProviderOrThrow(uri);
-    warnPermissionIfNeeded(provider, provider.writePermission, 'update', uri);
+    enforcePermissionIfNeeded(provider.writePermission, 'update', uri);
     const changed = provider.update(uri, values, where);
     if (changed > 0) ContentResolver.notifyChange(uri);
     return changed;
@@ -95,7 +151,7 @@ export const ContentResolver = {
 
   delete(uri: ContentUri, where?: string): number {
     const { provider } = getProviderOrThrow(uri);
-    warnPermissionIfNeeded(provider, provider.writePermission, 'delete', uri);
+    enforcePermissionIfNeeded(provider.writePermission, 'delete', uri);
     const changed = provider.delete(uri, where);
     if (changed > 0) ContentResolver.notifyChange(uri);
     return changed;

@@ -1,6 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { SettingsHeader } from './SettingsHeader';
-import { useAppNavigate } from '../navigation';
 import { PreferenceCategory } from './PreferenceCategory';
 import { PreferenceItem } from './PreferenceItem';
 import { Toast } from '@/os/components/Toast';
@@ -13,9 +12,10 @@ import {
 import { strings } from '../res/strings';
 import { stringsEn } from '../res/strings.en';
 import { useAppStrings } from '@/os/useAppStrings';
+import { useSettingsGestures } from '../hooks/useSettingsGestures';
 
 export const WifiSavedNetworkDetailPage: React.FC<{ ssid: string }> = ({ ssid }) => {
-  const { back } = useAppNavigate();
+  const { back, bindTap } = useSettingsGestures();
   const s = useAppStrings(strings, stringsEn);
   const savedNetworks = useWifiSavedNetworks();
   const connectedSsid = useWifiConnectedSsid();
@@ -49,7 +49,11 @@ export const WifiSavedNetworkDetailPage: React.FC<{ ssid: string }> = ({ ssid })
   return (
     <div className="h-full bg-app-bg flex flex-col">
       <SettingsHeader title={ssid} />
-      <div className="flex-1 overflow-y-auto no-scrollbar pb-8">
+      <div
+        className="flex-1 overflow-y-auto no-scrollbar pb-8"
+        data-scroll-container="main"
+        data-scroll-direction="vertical"
+      >
         <PreferenceCategory title={s.status}>
           <PreferenceItem
             title={s.security_2}
@@ -71,34 +75,50 @@ export const WifiSavedNetworkDetailPage: React.FC<{ ssid: string }> = ({ ssid })
             value={network.autoJoin === false ? s.off_2 : s.on_2}
             showChevron={false}
             showDivider={true}
-            onClick={() => {
-              setWifiNetworkAutoJoin(ssid, network.autoJoin === false);
-            }}
+            itemProps={bindTap<HTMLDivElement>(
+              { kind: 'action', id: 'settings.wifi.saved.autoJoin.toggle' },
+              {
+                params: { ssid, to: network.autoJoin === false },
+                onTrigger: () => setWifiNetworkAutoJoin(ssid, network.autoJoin === false),
+              },
+            )}
           />
           <PreferenceItem
             title={isConnected ? s.reconnect : s.connect}
             summary={!wifiEnabled ? s.wlan_is_off : undefined}
             showChevron={false}
             showDivider={true}
-            onClick={() => {
-              if (!wifiEnabled) {
-                showToast(s.please_enable_wlan_first);
-                return;
-              }
-              connectWifi(ssid);
-              showToast(s.connected);
-            }}
+            itemProps={bindTap<HTMLDivElement>(
+              { kind: 'action', id: 'settings.wifi.saved.connect' },
+              {
+                params: { ssid },
+                onTrigger: () => {
+                  if (!wifiEnabled) {
+                    showToast(s.please_enable_wlan_first);
+                    return;
+                  }
+                  connectWifi(ssid);
+                  showToast(s.connected);
+                },
+              },
+            )}
           />
           <PreferenceItem
             title={s.forget_network_2}
             summary={s.remove_from_saved_networks}
             showChevron={false}
             showDivider={false}
-            onClick={() => {
-              forgetWifiSavedNetwork(ssid);
-              showToast(s.removed);
-              setTimeout(() => back(), 250);
-            }}
+            itemProps={bindTap<HTMLDivElement>(
+              { kind: 'action', id: 'settings.wifi.saved.forget' },
+              {
+                params: { ssid },
+                onTrigger: () => {
+                  forgetWifiSavedNetwork(ssid);
+                  showToast(s.removed);
+                  window.setTimeout(() => back(), 250);
+                },
+              },
+            )}
           />
         </PreferenceCategory>
       </div>
@@ -106,4 +126,3 @@ export const WifiSavedNetworkDetailPage: React.FC<{ ssid: string }> = ({ ssid })
     </div>
   );
 };
-

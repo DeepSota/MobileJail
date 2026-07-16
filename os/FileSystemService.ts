@@ -6,7 +6,7 @@
  *
  * 设计目标（V2）：
  * - 仅在「首次初始化」或「手动 reset」时，从 public/sdcard 扫描并全量导入（meta + content）到 IndexedDB
- * - 常规启动只从 IndexedDB 读取，不再运行时扫描/合并 public/sdcard
+ * - 常规启动从 IndexedDB 读取；仅在显式 seed schema 升级时合并 public/sdcard
  * - 这样预置文件与运行中写入文件拥有一致语义（可重命名/移动/删除且跨重启保持）
  */
 import { FSNode, PresetFile } from './types';
@@ -58,7 +58,7 @@ const STORE_SYSTEM = 'system';
 const SEED_MARKER_ID = '__fs_seed__';
 // Bump this when the preset sdcard seed structure changes.
 // This will trigger a one-time re-import from public/sdcard on next startup.
-const SEED_SCHEMA_VERSION = 2 as const;
+const SEED_SCHEMA_VERSION = 5 as const;
 
 
 type SeedMarker = {
@@ -327,6 +327,16 @@ export function getNode(path: string): FSNode | null {
 }
 
 /**
+ * Get a node by its stable file-system id.
+ *
+ * Unlike a path lookup this keeps working after a move or rename, which is
+ * required by content:// references carried through Android-style Intents.
+ */
+export function getNodeById(id: string): FSNode | null {
+  return state.nodes.get(String(id)) || null;
+}
+
+/**
  * Check if a path exists
  */
 export function exists(path: string): boolean {
@@ -409,6 +419,12 @@ function clearBlobUrlCache(nodeId: string): void {
  */
 export async function readFile(path: string): Promise<Blob | null> {
   const node = getNode(path);
+  return node ? readFileById(node.id) : null;
+}
+
+/** Read a file through its stable id instead of its mutable path. */
+export async function readFileById(id: string): Promise<Blob | null> {
+  const node = getNodeById(id);
   if (!node || node.type !== 'file') return null;
   
   if (node.storage === 'preset') {
@@ -857,6 +873,24 @@ function makeSeedFileId(path: string): string {
   return `seed_${normalizePath(path).replace(/\//g, '_')}`;
 }
 
+/**
+ * Preserve anything that already occupies a newly introduced seed path.
+ *
+ * A different `seed_*` id is not disposable: it can be an older packaged file
+ * that the user moved or renamed to this path. Treat it exactly like a normal
+ * user-created path collision instead of deleting it during an upgrade.
+ */
+function shouldPreserveSeedPathOccupant(
+  occupyingId: string | undefined,
+  incomingId: string,
+): boolean {
+  return Boolean(occupyingId && occupyingId !== incomingId);
+}
+
+export const _seedUpgradeTestOnly = Object.freeze({
+  shouldPreserveSeedPathOccupant,
+});
+
 async function clearFilesAndMetadataStores(): Promise<void> {
   const conn = await ensureDb();
   if (!conn) return;
@@ -985,6 +1019,136 @@ async function seedImportFromPublicSdcard(): Promise<void> {
   console.log('[FileSystem] Seed import: complete');
 }
 
+/**
+ * Merge a newer packaged sdcard seed without erasing user-created files.
+ *
+ * A schema bump is an App/system update, not a factory reset. Only stable
+ * `seed_*` entries at their original paths are refreshed. User files, App
+ * private attachments, custom folders, and seed files the user moved/renamed
+ * retain their ids and contents.
+ */
+async function mergeSeedUpgradeFromPublicSdcard(): Promise<boolean> {
+  if (!(await ensureDb())) return false;
+
+  const existingNodes = await loadMetadataFromDB();
+  if (existingNodes.length === 0) {
+    await seedImportFromPublicSdcard();
+    return true;
+  }
+
+  const scan = await scanSdcard();
+  if (!scan) {
+    console.warn('[FileSystem] Seed upgrade deferred: packaged sdcard manifest is unavailable');
+    return false;
+  }
+
+  // Fetch every incoming blob before touching IndexedDB. A transient missing
+  // asset therefore leaves the old filesystem completely intact and retries
+  // on the next startup.
+  const incoming = scan.files.map((file) => {
+    const path = normalizePath(file.path);
+    return {
+      file,
+      path,
+      id: makeSeedFileId(path),
+      uri: file.uri || path,
+    };
+  });
+  const blobs = new Map<string, Blob>();
+  const SEED_FETCH_BATCH = 8;
+  for (let index = 0; index < incoming.length; index += SEED_FETCH_BATCH) {
+    const batch = incoming.slice(index, index + SEED_FETCH_BATCH);
+    const fetched = await Promise.all(batch.map(async (item) => {
+      const response = await fetch(presetAssetUrl(item.uri));
+      if (!response.ok) throw new Error(`Seed asset ${item.uri} returned HTTP ${response.status}`);
+      return { id: item.id, blob: await response.blob() };
+    }));
+    fetched.forEach(({ id, blob }) => blobs.set(id, blob));
+  }
+
+  state.nodes = new Map(existingNodes.map((node) => [node.id, node]));
+  state.pathIndex = new Map(existingNodes.map((node) => [node.path, node.id]));
+
+  await saveSeedMarkerToDB({
+    id: SEED_MARKER_ID,
+    version: SEED_SCHEMA_VERSION,
+    status: 'in_progress',
+    importedAt: TimeService.now(),
+    source: 'public/sdcard',
+    note: 'preserving user data during seed upgrade',
+  });
+
+  for (const directory of scan.directories) ensureDirectorySync(directory.path);
+
+  for (const item of incoming) {
+    const existingById = state.nodes.get(item.id);
+    // A stable seed id at another path means the user moved or renamed it.
+    // Keep that user-visible operation and do not recreate the packaged copy.
+    if (existingById && existingById.path !== item.path) continue;
+
+    const occupyingId = state.pathIndex.get(item.path);
+    const occupyingNode = occupyingId ? state.nodes.get(occupyingId) : null;
+    // Any different occupant wins. A different seed id can be an older seed
+    // file the user deliberately moved or renamed to this newly seeded path.
+    if (shouldPreserveSeedPathOccupant(occupyingNode?.id, item.id)) {
+      continue;
+    }
+
+    const parentPath = getParentPath(item.path);
+    const parent = ensureDirectorySync(parentPath);
+    if (!parent) continue;
+    const blob = blobs.get(item.id);
+    if (!blob) continue;
+    const modifiedAt = item.file.modifiedAt || TimeService.now();
+    const createdAt = existingById?.createdAt
+      ?? inferCreatedAtFromName(item.file.name, modifiedAt);
+    const node: FSNode = {
+      ...(existingById ?? {}),
+      id: item.id,
+      name: item.file.name,
+      type: 'file',
+      parentId: parent.id,
+      path: item.path,
+      size: blob.size,
+      mimeType: item.file.mimeType || blob.type,
+      createdAt,
+      modifiedAt,
+      storage: 'indexeddb',
+    };
+
+    const cachedUrl = blobUrlCache.get(node.id);
+    if (cachedUrl) URL.revokeObjectURL(cachedUrl);
+    blobUrlCache.delete(node.id);
+    state.nodes.set(node.id, node);
+    state.pathIndex.set(node.path, node.id);
+    await saveFileToDB(node.id, blob);
+    await saveMetadataToDB(node);
+  }
+
+  await persistAllMetadata();
+  await saveSeedMarkerToDB({
+    id: SEED_MARKER_ID,
+    version: SEED_SCHEMA_VERSION,
+    status: 'complete',
+    importedAt: TimeService.now(),
+    source: 'public/sdcard',
+    note: 'seed upgraded without clearing user data',
+  });
+  console.log('[FileSystem] Seed upgrade merged without clearing user data');
+  return true;
+}
+
+async function attemptSeedUpgradeMerge(): Promise<boolean> {
+  try {
+    return await mergeSeedUpgradeFromPublicSdcard();
+  } catch (error) {
+    // Keep loading the last durable filesystem snapshot. The marker remains
+    // old/in_progress so the packaged update is retried on the next startup.
+    console.error('[FileSystem] Seed upgrade merge deferred:', error);
+    return false;
+  }
+}
+
 async function importPresetFileFromConfig(preset: PresetFile): Promise<void> {
   const normalPath = normalizePath(preset.path);
   const parentPath = getParentPath(normalPath);
@@ -1063,16 +1227,17 @@ async function ensureSeedImportedIfNeeded(): Promise<void> {
   const marker = await loadSeedMarkerFromDB();
   if (marker?.status === 'complete') {
     if (marker.version !== SEED_SCHEMA_VERSION) {
-      console.warn('[FileSystem] Seed schema changed, re-importing');
-      await seedImportFromPublicSdcard();
+      console.warn('[FileSystem] Seed schema changed, merging packaged updates');
+      await attemptSeedUpgradeMerge();
     }
     return;
   }
 
-  // If import was interrupted, restart from scratch
+  // Resume an interrupted import as a merge. This is safe for both a fresh
+  // partial seed and an upgrade, and never destroys files created meanwhile.
   if (marker?.status === 'in_progress') {
-    console.warn('[FileSystem] Seed marker in_progress, re-importing');
-    await seedImportFromPublicSdcard();
+    console.warn('[FileSystem] Seed marker in_progress, resuming merge');
+    await attemptSeedUpgradeMerge();
     return;
   }
 
@@ -1214,7 +1379,8 @@ export async function destroyFileSystemDB(): Promise<void> {
 /**
  * 刷新文件系统
  *
- * V2 语义：运行时不再扫描/合并 public/sdcard，预置内容更新统一通过 reset 完成。
+ * V2 语义：普通 refresh 不扫描/合并 public/sdcard；预置内容更新通过显式
+ * seed schema 升级或 reset 完成。
  */
 export async function refreshFileSystem(): Promise<void> {
   console.warn('[FileSystem] refresh() is deprecated. Use __SIM_FS__.reset() to re-import from public/sdcard.');
@@ -1248,6 +1414,7 @@ function exposeAgentAPI(): void {
     
     // File operations
     read: readFile,
+    readById: readFileById,
     write: writeFile,
     delete: deleteNode,
     move: moveNode,
@@ -1255,6 +1422,7 @@ function exposeAgentAPI(): void {
     
     // Query
     stat: getNode,
+    statById: getNodeById,
     exists,
     search: searchFiles,
     getMedia: getMediaFiles,

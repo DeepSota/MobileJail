@@ -34,12 +34,6 @@ export const manifest: AppManifest = {
   ],
   intentFilters: [
     {
-      action: 'ACTION_SEND',
-      type: 'image/*',
-      route: '/',
-      description: '接收图片分享',
-    },
-    {
       action: 'ACTION_VIEW',
       type: 'image/*',
       route: '/intent/view',
@@ -48,5 +42,6 @@ export const manifest: AppManifest = {
   ],
   queries: [
     { action: 'ACTION_SEND', type: 'image/*' },
+    { action: 'ACTION_SEND_MULTIPLE', type: '*/*' },
   ],
 };

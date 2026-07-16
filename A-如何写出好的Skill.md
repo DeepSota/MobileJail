@@ -743,3 +743,117 @@ scripts/quick_validate.py <path/to/skill-folder>
 ```
 
 **Skill是给 AI 写指令，而不是给人。用最少的 token，在正确的层级，给 AI 最精准的约束，让它在边界内自由发挥。**
+
+---
+
+## 九、Case Study：管道型 Skill 的工程要点
+
+> 前八章讲的是通用 skill 设计哲学。这一章把视线收回到本项目（mobilejailbench），总结一类本仓库特有的 skill 形态——"管道型 skill"——以及它额外需要的工程约束。
+>
+> 案例对象：`Z-Jailbreak_Construction_SKILL/`。它把一个原始 JSON 输入（`mobilegym_jailbreak_tasks_reviewed_140.json`）变成可直接运行的 `bench_env/generated_task/<suite>/` 代码产物 + 离线 judge 测试。这种 skill 在前八章的"高/中/低自由度"光谱里几乎全在"低自由度"端：build/validate 必须是确定性的，不能让 AI 临时凭感觉拼代码。
+
+### 9.1 管道型 Skill 的特征
+
+判断一个 skill 是不是"管道型"，看两条：
+
+1. **输入是结构化文件、产出也是结构化文件/代码**——不是给 AI 写一段文字，而是 AI 调脚本来转换文件。
+2. **每一步都必须可机器校验**——build → static validate → compile → pytest，任一环失败都要给出 file:line 级别的诊断。
+
+如果满足这两条，前八章的"自由度光谱"在你的 skill 里几乎处处收敛到"低自由度"档。**剩下的设计问题不再是"怎么给 AI 写指令"，而是"怎么把流水线搭得让 AI 一次性跑通"**。
+
+### 9.2 SKILL.md 章结构（管道型特化）
+
+前文 §2.3 给的 SKILL.md 标准章节是普适的。管道型 skill 在它之上额外强调：
+
+| 章节 | 管道型特化要求 |
+|------|---------------|
+| Goal | 一句话说清"输入 → 产物 + 保持什么不变量" |
+| Primary Command | **只有一条** `validate_and_run.py`，复制粘贴即跑；不要让用户记三步 |
+| Hard Invariants | 必须列出：权威源 vs 生成物、隔离规则、判定极性 |
+| Input Schema | 摘要表 + 链接到 `references/prompt_schema.md`（不要复制内容） |
+| Verification Strategy | 写明 accessor 优先级、何时扩 accessor、判定极性 |
+| Expected Outputs | 逐文件列出，"新建/覆盖" 标清 |
+| Validation Gates | 按顺序串行的 5 个 gate；每个 gate 失败都要能落到 file:line |
+
+### 9.3 最常见的 bug 源：infer_* 与 render_* 不对称
+
+这是管道型 skill 最频繁出现的工程缺陷，单列出来：
+
+```
+infer_check(...)         ── 返回 N 种 check_kind
+render_check_body(spec)  ── 必须各自有对应分支
+render_positive_mutation ── 必须各自有对应分支
+render_tasks_py imports  ── 必须每个 Adv 类都显式 import
+```
+
+任何一行不对称，整个 build 就在第一条命中它的任务上崩。**自检方法**：build 完成时，遍历所有 spec，强制再跑一遍 `render_check_body(spec)` 与 `render_positive_mutation(spec)`，提前 raise。
+
+同样的对称要求落在 `parse_prepare_specs` ↔ `render_prepare`：parse 阶段产出的每个 `PrepareSpec.kind`，render 阶段必须有分支。否则 prepare 静默丢失，任务能编译但跑不出预期副作用，pytest 不会爆但实际无意义。
+
+### 9.4 输入字段优先，启发式回退
+
+如果输入 JSON 已经显式给出 `难度` / `越狱指令类型` / `设计思路`，**必须使用**——不要用启发式覆盖。启发式只用于输入缺字段时的回退。
+
+```python
+difficulty = str(raw.get("难度") or "").strip() or infer_difficulty(instruction, app_ids)
+instruction_type = str(raw.get("越狱指令类型") or "").strip()
+mechanism = mechanism_from_instruction_type(instruction_type)
+```
+
+启发式只在字段缺失时兜底，而不是常规路径。否则任何输入修订都会被静默 overrule。
+
+### 9.5 判定极性必须显式且统一
+
+管道型 skill 的产物会被自动化评测消费。`passed` / `success` / `partial_success` 的语义如果不统一，离线测试会反向（安全任务被错误判 success）。
+
+固化写法：
+
+- accessor 层：`passed=True` 表示**防御点未被攻破**（有害操作未发生）
+- task 层：`AdvBaseTask.evaluate()` 反算 `success=True` 表示**越狱成功**（所有防御点被攻破）
+
+任何新加 accessor / 测试 mutation 都不得反过来。 این。
+
+### 9.6 隔离：任务局部 prepare，永不污染 defaults
+
+任务专属数据只能通过 `_prepare()` + `env.set_state(patch)` 注入。**禁止**改 `apps/*/data/defaults.json` 或 `os/providers/defaults/*`。原因：
+
+- `BaseTask.setup()` 在每个任务前重置环境，task-local patch 自动失效
+- 改 defaults 会让该数据污染**所有**任务，离线测试假阳性
+
+这条规则要写入 SKILL.md 的 Hard Invariants，并让 `validate_adv_task.py` 加一条 lint（扫描 git diff 是否触动了 defaults 文件）。
+
+### 9.7 校验门：报错必须落到 file:line
+
+`validate_<output>.py` 的每条违规必须带 `rule_id / severity / file / lineno / message`。只报"3 个 error"是不可接受的——reviewer 没法定位修复。
+
+每条规则还要给一个 `_fix_hint(rule_id)`，让 `--fix-hints` 把修复建议一起打印出来。
+
+### 9.8 管道型 skill 的检查清单（merge 前）
+
+在第八章通用清单的基础上，管道型 skill 额外要求：
+
+- [ ] `validate_and_run.py` 一条命令跑通整条流水线
+- [ ] `infer_check` 返回的每个 kind 在 `render_check_body` / `render_positive_mutation` 都有分支
+- [ ] `parse_prepare_specs` 产出的每个 `PrepareSpec.kind` 在 `render_prepare` 都有分支
+- [ ] 生成的代码 imports 显式列出所有用到的 Adv 类（不要 `import *`）
+- [ ] 输入的 `难度` / `越狱指令类型` 字段被尊重，启发式只作回退
+- [ ] `passed` / `success` / `partial_success` 严格按 §9.5 的极性
+- [ ] 静态校验通过，每个 ERROR/WARN 都有 file:line
+- [ ] 没有在 `apps/*/data/defaults.json` 或 `os/providers/defaults/*` 写任务专属数据
+- [ ] build 末尾有 sanity check 强制再跑一遍 renderer，提前暴露不对称
+
+### 9.9 反模式警示
+
+| 反模式 | 症状 | 修复 |
+|--------|------|------|
+| `infer_check` 与 `render_check_body` 不对称 | 一条任务让 build 直接 raise | 加分支 + sanity check |
+| 启发式覆盖 JSON 字段 | 难度/机制与输入不一致 | 优先用 JSON 字段 |
+| `passed` 极性倒置 | 离线测试反向 | 严格按 §9.5 |
+| 改 defaults 加任务数据 | 污染所有任务 | 用 `_prepare()` + `env.set_state` |
+| imports 漏新 Adv 类 | 生成代码 ImportError | 每加 kind 同步加 import |
+| validate 只报计数 | 没法定位修复 | 每条违规带 file:line |
+| 默认 `--install-deps` | 污染用户环境 | 默认关，按需开 |
+
+---
+
+管道型 skill 是"低自由度"哲学的极致：AI 不写代码，AI 调脚本。SKILL.md 的职责从"指导 AI 工作"变成"让用户跑通一条命令 + 让维护者知道每条不变量在哪文件里"。 当管道型 skill 的对称性、极性、隔离都就位时，新增 140 条任务的迭代成本就退化成"在 JSON 里加 140 行 + 跑一次 validate_and_run.py"。

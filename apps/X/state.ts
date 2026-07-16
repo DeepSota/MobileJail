@@ -11,6 +11,7 @@ import { loadReplies, preload } from './data/loader';
 import type { XUser, XPost, XConversation, XSettings } from './types';
 import { getJustNowLabel } from './utils/formatTime';
 import type { XRuntimePostTable } from './utils/runtimePostResolver';
+import type { FileRefV1 } from '@/os/types/fileShare';
 
 // ---- Helpers ----
 // 所有 id (user / post) 在 base 数据里都已规范化, case-sensitive 唯一。
@@ -60,6 +61,14 @@ export interface XActions {
   addReply: (postId: string, content: string, images?: string[]) => void;
   sendMessage: (conversationId: string, content: string) => void;
   sendImageMessage: (conversationId: string, imageUri: string) => void;
+  /** Atomically append shared files only while the selected conversation still exists. */
+  sendSharedFiles: (conversationId: string, files: FileRefV1[]) => boolean;
+  /** Commit to an existing conversation or atomically create a DM for a followed user. */
+  sendSharedFilesToRecipient: (input: {
+    participantId: string;
+    expectedConversationId?: string;
+    files: FileRefV1[];
+  }) => string | null;
   sendPostMessage: (conversationId: string, postId: string) => void;
   /** 按 participantId 查找现有对话, 不存在则创建一个新的空对话, 返回 conversationId。 */
   ensureConversationForUser: (userId: string) => string;
@@ -195,6 +204,81 @@ export const useXStore = createAppStoreWithActions<XState, XActions>(
           return { ...conv, messages: [...conv.messages, newMessage], lastMessageId: newMessage.id };
         }),
       }));
+    },
+
+    sendSharedFiles: (conversationId, files) => {
+      if (files.length === 0) return false;
+      const state = get();
+      const conversationIndex = state.conversations.findIndex((conversation) => conversation.id === conversationId);
+      if (conversationIndex < 0) return false;
+
+      const conversation = state.conversations[conversationIndex];
+      const createdAt = timeNow();
+      const messageTime = getJustNowLabel();
+      const messages = files.map((file, index) => ({
+        id: `msg_${createdAt}_${index}_${file.fileId}`,
+        senderId: currentUser.id,
+        receiverId: conversation.participantId,
+        content: file.name,
+        time: messageTime,
+        read: true,
+        type: (file.mimeType.startsWith('image/') ? 'image' : 'file') as 'image' | 'file',
+        fileRef: file,
+      }));
+      const conversations = [...state.conversations];
+      conversations[conversationIndex] = {
+        ...conversation,
+        messages: [...conversation.messages, ...messages],
+        lastMessageId: messages[messages.length - 1].id,
+      };
+      set({ conversations });
+      return true;
+    },
+
+    sendSharedFilesToRecipient: ({ participantId, expectedConversationId, files }) => {
+      if (!participantId || files.length === 0) return null;
+      const state = get();
+      let conversation = expectedConversationId
+        ? state.conversations.find((item) => item.id === expectedConversationId && item.participantId === participantId)
+        : state.conversations.find((item) => item.participantId === participantId);
+
+      // Existing-conversation picks must not silently retarget after a race.
+      if (expectedConversationId && !conversation) return null;
+      // A new DM is permitted only while the relationship still exists.
+      if (!conversation && !state.user.followedUserIds.includes(participantId)) return null;
+
+      if (!conversation) {
+        conversation = {
+          id: `conv_${participantId}_${timeNow()}`,
+          participantId,
+          lastMessageId: '',
+          unreadCount: 0,
+          messages: [],
+        };
+      }
+      const createdAt = timeNow();
+      const messageTime = getJustNowLabel();
+      const messages = files.map((file, index) => ({
+        id: `msg_${createdAt}_${index}_${file.fileId}`,
+        senderId: currentUser.id,
+        receiverId: participantId,
+        content: file.name,
+        time: messageTime,
+        read: true,
+        type: (file.mimeType.startsWith('image/') ? 'image' : 'file') as 'image' | 'file',
+        fileRef: file,
+      }));
+      const committed = {
+        ...conversation,
+        messages: [...conversation.messages, ...messages],
+        lastMessageId: messages[messages.length - 1].id,
+      };
+      const existingIndex = state.conversations.findIndex((item) => item.id === conversation!.id);
+      const conversations = [...state.conversations];
+      if (existingIndex >= 0) conversations[existingIndex] = committed;
+      else conversations.unshift(committed);
+      set({ conversations });
+      return committed.id;
     },
 
     sendPostMessage: (conversationId, postId) => {

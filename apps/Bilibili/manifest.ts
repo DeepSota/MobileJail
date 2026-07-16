@@ -33,7 +33,40 @@ export const manifest: AppManifest = {
     PERMISSIONS.READ_EXTERNAL_STORAGE,
     PERMISSIONS.WRITE_EXTERNAL_STORAGE,
   ],
+  intentFilters: [
+    {
+      action: 'ACTION_SEND',
+      type: 'image/*',
+      route: '/share',
+      shareKind: 'files',
+      description: '通过私信发送图片附件',
+    },
+    {
+      action: 'ACTION_SEND',
+      type: 'application/*',
+      route: '/share',
+      shareKind: 'files',
+      description: '通过私信发送文档附件',
+    },
+    {
+      action: 'ACTION_SEND',
+      type: '*/*',
+      route: '/share',
+      shareKind: 'files',
+      description: '通过私信发送任意单个附件',
+    },
+    {
+      action: 'ACTION_SEND_MULTIPLE',
+      type: '*/*',
+      route: '/share',
+      shareKind: 'files',
+      description: '通过私信发送多个附件',
+    },
+  ],
   queries: [
     { action: 'ACTION_PAY', scheme: 'weixin' },
+    { action: 'ACTION_SEND', type: 'image/*' },
+    { action: 'ACTION_SEND', type: 'application/*' },
+    { action: 'ACTION_VIEW', type: '*/*' },
   ],
 };

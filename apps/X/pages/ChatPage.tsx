@@ -11,6 +11,74 @@ import { useXResolvedPost } from '../data/view';
 import { useXConversations } from '../data/view';
 import { useXGestures } from '../hooks/useXGestures';
 import { useXStrings } from '../hooks/useXStrings';
+import { SharedFileImage } from '@/os/components/SharedFileImage';
+import { createViewIntent, openFileRefInViewer } from '@/os/FileShareService';
+import type { FileRefV1 } from '@/os/types/fileShare';
+import { Toast } from '@/os/components/Toast';
+
+function formatFileSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${bytes} B`;
+}
+
+const SharedAttachmentBubble: React.FC<{
+  fileRef: FileRefV1;
+  isMe: boolean;
+  time: string;
+  onOpenError: () => void;
+}> = ({ fileRef, isMe, time, onOpenError }) => {
+  const s = useXStrings();
+  const { bindTap } = useXGestures();
+  const openFile = () => {
+    if (fileRef.mimeType.startsWith('image/')) {
+      const intent = createViewIntent(fileRef, { targetAppId: 'gallery' });
+      if (!intent || !window.__OS__?.startActivity('gallery', intent)) onOpenError();
+      return;
+    }
+    if (!openFileRefInViewer(fileRef)) onOpenError();
+  };
+
+  if (fileRef.mimeType.startsWith('image/')) {
+    return (
+      <button
+        type="button"
+        {...bindTap(
+          { kind: 'action', id: 'chat.file.open' },
+          { params: { fileId: fileRef.fileId }, onTrigger: openFile },
+        )}
+        className={`max-w-[75%] rounded-2xl overflow-hidden text-left ${isMe ? 'rounded-br-sm' : 'rounded-bl-sm'}`}
+        aria-label={s.chat_file_open}
+      >
+        <SharedFileImage fileRef={fileRef} alt={fileRef.name} className="max-h-[11rem] object-contain w-full" />
+        <div className={`text-[10px] text-right px-2 py-1 ${isMe ? 'text-blue-200 bg-blue-500' : 'text-gray-400 bg-gray-100'}`}>
+          {time}
+        </div>
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      {...bindTap(
+        { kind: 'action', id: 'chat.file.open' },
+        { params: { fileId: fileRef.fileId }, onTrigger: openFile },
+      )}
+      className={`max-w-[75%] min-w-[14rem] px-4 py-3 rounded-2xl text-left flex items-center gap-3 ${isMe ? 'bg-blue-500 text-white rounded-br-sm' : 'bg-gray-100 text-app-text rounded-bl-sm'}`}
+      aria-label={`${s.chat_file_open}: ${fileRef.name}`}
+    >
+      <span className={`w-10 h-12 rounded-lg flex items-center justify-center text-[11px] font-bold uppercase shrink-0 ${isMe ? 'bg-white/20' : 'bg-white'}`}>
+        {fileRef.name.split('.').pop()?.slice(0, 4) || 'FILE'}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold truncate">{fileRef.name}</span>
+        <span className={`block text-[11px] mt-1 ${isMe ? 'text-blue-100' : 'text-gray-500'}`}>{formatFileSize(fileRef.size)}</span>
+        <span className={`block text-[10px] mt-1 text-right ${isMe ? 'text-blue-200' : 'text-gray-400'}`}>{time}</span>
+      </span>
+    </button>
+  );
+};
 
 const ForwardedPostBubble: React.FC<{ postId: string; isMe: boolean; time: string }> = ({ postId, isMe, time }) => {
   const post = useXResolvedPost(postId);
@@ -63,6 +131,7 @@ export const ChatPage: React.FC = () => {
   const user = useXStore(selectUser);
   const [inputValue, setInputValue] = useState('');
   const [pickingImage, setPickingImage] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevKeyboardHeightRef = useRef(0);
   const { bindBack, bindTap } = useXGestures();
@@ -179,6 +248,7 @@ export const ChatPage: React.FC = () => {
         {conversation.messages.map((message: any) => {
           const isMe = message.isMe;
           const isImage = message.type === 'image' && message.image;
+          const isSharedFile = message.fileRef;
           const isPost = message.type === 'post' && message.forwardedPostId;
           return (
             <div key={message.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
@@ -193,7 +263,17 @@ export const ChatPage: React.FC = () => {
                   )}
                 </div>
               )}
-              {isImage ? (
+              {isSharedFile ? (
+                <SharedAttachmentBubble
+                  fileRef={isSharedFile}
+                  isMe={isMe}
+                  time={message.time}
+                  onOpenError={() => {
+                    setToast(s.chat_file_unavailable);
+                    window.setTimeout(() => setToast(null), 2200);
+                  }}
+                />
+              ) : isImage ? (
                 <div className={`max-w-[75%] rounded-2xl overflow-hidden ${isMe ? 'rounded-br-sm' : 'rounded-bl-sm'}`}>
                   <img src={message.image} className="max-h-[11rem] object-contain w-full" alt="" />
                   <div className={`text-[10px] text-right px-2 py-1 ${isMe ? 'text-blue-200' : 'text-gray-400'}`}>
@@ -261,6 +341,7 @@ export const ChatPage: React.FC = () => {
           )}
         </div>
       </div>
+      <Toast message={toast ?? ''} visible={Boolean(toast)} />
     </div>
   );
 };

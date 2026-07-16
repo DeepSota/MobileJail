@@ -57,6 +57,8 @@ let realModeAnchorReal: number | undefined = (!_cfgIsSimulated && _cfgSpeed !== 
 let realModeAnchorSimulated: number | undefined = (!_cfgIsSimulated && _cfgSpeed !== 1) ? Date.now() : undefined;
 
 let _bootTime: number = 0;
+let use24HourFormat = true;
+let systemTimeZone = 'Asia/Shanghai';
 
 let timeTickTimer: number | null = null;
 
@@ -376,7 +378,41 @@ export function resolveDataTimestamp(raw: string | number): number {
  */
 export function formatTime(): string {
     const d = getDate();
-    return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+    if (!use24HourFormat) {
+        return new Intl.DateTimeFormat(getIntlLocale(), {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true,
+            timeZone: systemTimeZone,
+        }).format(d);
+    }
+    return new Intl.DateTimeFormat('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+        timeZone: systemTimeZone,
+    }).format(d);
+}
+
+export function setUse24HourFormat(enabled: boolean): void {
+    use24HourFormat = Boolean(enabled);
+}
+
+export function isUsing24HourFormat(): boolean {
+    return use24HourFormat;
+}
+
+export function setSystemTimeZone(timeZone: string): void {
+    try {
+        new Intl.DateTimeFormat('en-US', { timeZone }).format(0);
+        systemTimeZone = timeZone;
+    } catch {
+        // Ignore invalid or unsupported IANA zones.
+    }
+}
+
+export function getSystemTimeZone(): string {
+    return systemTimeZone;
 }
 
 function getIntlLocale(): string {
@@ -388,17 +424,21 @@ function formatDateByLocale(date: Date): string {
         return new Intl.DateTimeFormat('en-US', {
             month: 'short',
             day: 'numeric',
+            timeZone: systemTimeZone,
         }).format(date);
     }
-    return `${date.getMonth() + 1}月${date.getDate()}日`;
+    return new Intl.DateTimeFormat('zh-CN', {
+        month: 'numeric',
+        day: 'numeric',
+        timeZone: systemTimeZone,
+    }).format(date);
 }
 
 function formatWeekdayByLocale(date: Date): string {
     if (getLocale() === 'en') {
-        return new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(date);
+        return new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: systemTimeZone }).format(date);
     }
-    const days = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-    return days[date.getDay()];
+    return new Intl.DateTimeFormat('zh-CN', { weekday: 'short', timeZone: systemTimeZone }).format(date);
 }
 
 export function formatDate(): string {
@@ -410,7 +450,7 @@ export function getDayOfWeek(): string {
 }
 
 export function formatDateTimeForLocale(date: Date, options?: Intl.DateTimeFormatOptions): string {
-    return new Intl.DateTimeFormat(getIntlLocale(), options).format(date);
+    return new Intl.DateTimeFormat(getIntlLocale(), { timeZone: systemTimeZone, ...options }).format(date);
 }
 
 /**

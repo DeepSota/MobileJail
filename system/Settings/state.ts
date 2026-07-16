@@ -8,6 +8,7 @@ import { subscribeOsDataRevision } from '../../os/simState';
 import { loadPages, type SettingsPagesData } from './data/loader';
 import type { SettingsConfigState, SettingsValue, WifiSavedNetwork } from './types';
 import * as TimeService from '../../os/TimeService';
+import { resolveSettingsPreferenceKey } from './data/settingsMappings';
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -179,17 +180,18 @@ export function usePreferenceValue<T extends SettingsValue>(
   key: string,
   fallback: T,
 ): [T, (v: T) => void] {
+  const routedKey = resolveSettingsPreferenceKey(key);
   const value = useSyncExternalStore(
     subscribeOsDataRevision,
     () => {
-      const v = routeGetPreference(key);
+      const v = routeGetPreference(routedKey);
       return (v === undefined ? fallback : (v as T));
     },
   );
 
   const setValue = useCallback((v: T) => {
-    routeSetPreference(key, v, { source: 'settings' });
-  }, [key]);
+    routeSetPreference(routedKey, v, { source: 'settings' });
+  }, [routedKey]);
 
   return [value as T, setValue];
 }

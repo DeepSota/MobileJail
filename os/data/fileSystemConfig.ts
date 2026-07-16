@@ -43,6 +43,7 @@ export const ALBUM_DEFINITIONS = [
   { id: 'videos', name: '视频', type: 'system' as const, pathPattern: null, mimePrefix: 'video/' },
   { id: 'wechat', name: '微信', type: 'app' as const, pathPattern: '/sdcard/Pictures/WeChat' },
   { id: 'redbook', name: '小红书', type: 'app' as const, pathPattern: '/sdcard/Pictures/Redbook' },
+  { id: 'audit_test', name: 'Audit TEST', type: 'app' as const, pathPattern: '/sdcard/Pictures/Audit_TEST' },
   { id: 'downloads', name: '下载', type: 'system' as const, pathPattern: '/sdcard/Download' },
   { id: 'movies', name: '电影', type: 'system' as const, pathPattern: '/sdcard/Movies' },
 ];

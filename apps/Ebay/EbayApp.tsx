@@ -18,6 +18,7 @@ import CartPage from './pages/CartPage';
 import SettingsPage from './pages/SettingsPage';
 import CategoriesPage from './pages/CategoriesPage';
 import ItemDetailPage from './pages/ItemDetailPage';
+import LoginPage from './pages/LoginPage';
 
 export const EbayApp: React.FC = () => {
   const { isDark } = useDarkMode();
@@ -48,6 +49,7 @@ export const EbayApp: React.FC = () => {
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/categories" element={<CategoriesPage />} />
             <Route path="/item/:id" element={<ItemDetailPage />} />
+            <Route path="/login" element={<LoginPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

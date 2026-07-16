@@ -145,5 +145,11 @@
       { "name": "蓝牙键盘", "mac": "18:65:90:01:02:03", "type": "peripheral", "paired": false, "connected": false, "pairable": false },
       { "name": "Car Audio", "mac": "54:7B:9D:10:20:30", "type": "audio", "paired": false, "connected": false, "pairable": false }
     ]
+  },
+  "preferences": {
+    "enable_development_settings": true,
+    "usb_debugging": false,
+    "usb_install": false,
+    "keep_screen_on_while_plugged_in": false
   }
 }

@@ -10,6 +10,7 @@ export const stringsEn: Partial<Record<StringKey, string>> = {
   empty_search_results: 'No matching messages',
   new_message_title: 'New message',
   recipient_label: 'To:',
+  remove_recipient: 'Remove recipient',
   pick_contact_title: 'Select contact',
   cancel: 'Cancel',
   sms_placeholder: 'Message',
@@ -115,4 +116,7 @@ export const stringsEn: Partial<Record<StringKey, string>> = {
   file_size_kb: 'KB',
   file_size_mb: 'MB',
   file_size_bytes: 'B',
+  shared_files: 'Attachments to send',
+  attachment_send_failed: 'The attachment could not be copied. Check the source file and try again.',
+  attachment_unavailable: 'This attachment is missing or cannot be opened right now.',
 };

@@ -21,14 +21,17 @@ import { TransferSheet } from '../components/TransferSheet';
 import { CollapsingToolbar, CollapsingLargeTitle, ToolbarIconButton, TOOLBAR_SPACER_HEIGHT } from '@/os/components/CollapsingToolbar';
 import { IcShare, IcMove, IcDelete, IcMoreCircle } from '../res/icons';
 import { AsyncImage } from '../components/AsyncImage';
-import { getFileIcon, getFileIconColor, isPdfPreviewableFile, isTextPreviewableFile } from '../utils/fileUtils';
+import { getFileIcon, getFileIconColor } from '../utils/fileUtils';
+import { useOpenFile, getFileOpenTarget } from '../hooks/useOpenFile';
+import { UnsupportedFileSheet } from '../components/UnsupportedFileSheet';
 import { strings } from '../res/strings';
 import { stringsEn } from '../res/strings.en';
 import { useAppStrings } from '@/os/useAppStrings';
 import * as TimeService from '@/os/TimeService';
-import { transferNodesToDirectory, type TransferOperation } from '../utils/fileOperations';
+import { shareNodes, transferNodesToDirectory, type TransferOperation } from '../utils/fileOperations';
 export const BrowseHomePage: React.FC = () => {
-  const { go, back } = useFileManagerGestures();
+  const { go, back, bindTap } = useFileManagerGestures();
+  const { openFile, unsupportedFile, dismissUnsupportedFile } = useOpenFile();
   const location = useLocation();
   const s = useAppStrings(strings, stringsEn);
 
@@ -136,9 +139,7 @@ export const BrowseHomePage: React.FC = () => {
       toggleSelect(item.id);
       return;
     }
-    if (item.type === 'directory') go('folder.open', { path: item.path });
-    else if (isTextPreviewableFile(item)) go('file.text.open', { path: item.path });
-    else if (isPdfPreviewableFile(item)) go('file.pdf.open', { path: item.path });
+    openFile(item);
   };
 
   const handlePointerDown = (item: FSNode) => {
@@ -342,7 +343,36 @@ export const BrowseHomePage: React.FC = () => {
               const Icon = getFileIcon(item);
               const iconColor = getFileIconColor(item);
               const isImage = item.mimeType?.startsWith('image/');
-              const isOpenable = item.type === 'directory' || isTextPreviewableFile(item) || isPdfPreviewableFile(item);
+              const openTarget = getFileOpenTarget(item);
+              const folderBinding = openTarget === 'folder'
+                ? bindTap('folder.open', { params: { path: item.path } })
+                : null;
+              const folderAttrs = folderBinding
+                ? {
+                    'data-trigger': folderBinding['data-trigger'],
+                    'data-trigger-type': folderBinding['data-trigger-type'],
+                    'data-trigger-params': folderBinding['data-trigger-params'],
+                  }
+                : null;
+              const actionAttrs = folderAttrs
+                ? folderAttrs
+                : openTarget === 'viewer'
+                  ? {
+                      'data-trigger': 'file.viewer.open',
+                      'data-trigger-type': 'tap',
+                      'data-trigger-params': JSON.stringify({ path: item.path }),
+                    }
+                  : openTarget === 'unsupported'
+                    ? {
+                        'data-trigger': 'browse.file.unsupported.open',
+                        'data-trigger-type': 'tap',
+                        'data-trigger-params': JSON.stringify({ itemPath: item.path }),
+                      }
+                    : {
+                        'data-action': 'browse.file.image.open',
+                        'data-action-type': 'tap',
+                        'data-action-params': JSON.stringify({ path: item.path }),
+                      };
               const itemMeta = item.type === 'directory'
                 ? `${FileSystem.listDirectory(item.path).length}${s.item_count_suffix}`
                 : FileSystem.formatFileSize(item.size);
@@ -364,6 +394,7 @@ export const BrowseHomePage: React.FC = () => {
                   onPointerUp={handlePointerUp}
                   onPointerCancel={handlePointerUp}
                   onPointerLeave={handlePointerUp}
+                  {...actionAttrs}
                   className={`flex items-center gap-4 w-full py-3 px-2 active:bg-gray-50 transition-colors rounded-xl ${
                     isSelected ? 'bg-blue-50' : ''
                   }`}
@@ -399,7 +430,7 @@ export const BrowseHomePage: React.FC = () => {
                       {isSelected && <IcCheck size={16} className="text-white" strokeWidth={3} />}
                     </div>
                   ) : (
-                    isOpenable && <IcNavForward size={20} className="text-gray-300 shrink-0" />
+                    <IcNavForward size={20} className="text-gray-300 shrink-0" />
                   )}
                 </button>
               );
@@ -416,7 +447,15 @@ export const BrowseHomePage: React.FC = () => {
           className="absolute bottom-0 left-0 right-0 bg-app-surface flex items-center justify-around pt-3 pb-[calc(12px+env(safe-area-inset-bottom))] z-40 animate-in slide-in-from-bottom-10 duration-200"
           style={{ minHeight: 'var(--app-selection-action-bar-height)' }}
         >
-          <button className="flex flex-col items-center gap-1.5 px-4 active:opacity-60">
+          <button
+            type="button"
+            onClick={() => {
+              if (!shareNodes(getSelectedNodes())) showToast(s.toast_send_no_image);
+            }}
+            data-action="browse.select.send"
+            data-action-type="tap"
+            className="flex flex-col items-center gap-1.5 px-4 active:opacity-60"
+          >
             <div className="w-6 h-6 flex items-center justify-center">
               <IcShare />
             </div>
@@ -484,6 +523,8 @@ export const BrowseHomePage: React.FC = () => {
         onCloseCreateFolder={back}
         onCreatedFolder={refreshItems}
       />
+
+      <UnsupportedFileSheet file={unsupportedFile} onClose={dismissUnsupportedFile} />
       
       <Toast message={toast.message} visible={toast.visible} />
       

@@ -1,5 +1,5 @@
 import { useTencentMeetingStrings } from '../hooks/useTencentMeetingStrings';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import * as MediaService from '@/os/MediaService';
 import {
     IcMic,
@@ -40,6 +40,9 @@ import { useMeetingGestures } from '../hooks/useMeetingGestures';
 import { useMeetingStore } from '../state';
 import { getPersistedMeetingChatRecipientName, shouldShowPrivateChatBadge } from '../utils/meetingDataValue';
 import { useShallow } from 'zustand/react/shallow';
+import { SharedFileImage } from '../../../os/components/SharedFileImage';
+import { createViewIntent, openFileRefInViewer } from '../../../os/FileShareService';
+import { Toast } from '../../../os/components/Toast';
 // Format duration as MM:SS
 const formatDuration = (ms: number) => {
     const totalSeconds = Math.floor(ms / 1000);
@@ -76,9 +79,20 @@ export const MeetingPage: React.FC = () => {
     const [renamingId, setRenamingId] = useState<string | null>(null);
     const [renameText, setRenameText] = useState('');
     const [showRenameDialog, setShowRenameDialog] = useState(false);
+    const launchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+    const sharedExpectedMeetingId = launchParams.get('source') === 'fileShare'
+        ? launchParams.get('meetingId')
+        : null;
+    const launchHandledRef = React.useRef(false);
 
     // Start meeting if not already started
     useEffect(() => {
+        if (launchHandledRef.current) return;
+        launchHandledRef.current = true;
+        if (sharedExpectedMeetingId) {
+            if (activeMeeting?.id !== sharedExpectedMeetingId) back();
+            return;
+        }
         if (!activeMeeting) {
             const usePersonalId = pendingMeetingConfig?.usePersonalId ?? false;
             const cameraOn = pendingMeetingConfig?.videoOn;
@@ -86,7 +100,7 @@ export const MeetingPage: React.FC = () => {
             // 清除 pending 配置
             setPendingMeetingConfig(null);
         }
-    }, []);
+    }, [activeMeeting, back, pendingMeetingConfig, setPendingMeetingConfig, sharedExpectedMeetingId, startMeeting]);
 
     // 进入会议2秒后开始计时
     useEffect(() => {
@@ -124,6 +138,11 @@ export const MeetingPage: React.FC = () => {
     const [isSelectingRecipient, setIsSelectingRecipient] = useState(false);
     const [chatMessage, setChatMessage] = useState('');
     const [pickingImage, setPickingImage] = useState(false);
+    const [attachmentToast, setAttachmentToast] = useState(false);
+    const showAttachmentUnavailable = () => {
+        setAttachmentToast(true);
+        window.setTimeout(() => setAttachmentToast(false), 2200);
+    };
     const chatTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
     const chatScrollRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -386,7 +405,50 @@ export const MeetingPage: React.FC = () => {
                                                                  : 'bg-app-surface text-black rounded-tl-none border border-app-border'
                                                          }`}>
                                                              {msg.type === 'image' && msg.image ? (
-                                                                 <img src={msg.image} className="max-h-[11rem] rounded object-contain" alt="" />
+                                                                 <button
+                                                                    type="button"
+                                                                    data-action="meeting.chat.attachment.open"
+                                                                    data-action-type="tap"
+                                                                    data-action-params={JSON.stringify({
+                                                                        messageId: msg.id,
+                                                                        fileId: msg.fileRef?.fileId ?? msg.id,
+                                                                    })}
+                                                                    className="block"
+                                                                    onClick={() => {
+                                                                        if (msg.fileRef) {
+                                                                            const intent = createViewIntent(msg.fileRef, { targetAppId: 'gallery' });
+                                                                            if (!intent || !window.__OS__?.startActivity('gallery', intent)) showAttachmentUnavailable();
+                                                                            return;
+                                                                        }
+                                                                        window.__OS__?.startActivity('gallery', { action: 'ACTION_VIEW', type: 'image/*', data: { stream: msg.image } });
+                                                                    }}
+                                                                 >
+                                                                    {msg.fileRef ? (
+                                                                        <SharedFileImage fileRef={msg.fileRef} fallbackSrc={msg.image} className="max-h-[11rem] rounded object-contain" alt="" />
+                                                                    ) : (
+                                                                        <img src={msg.image} className="max-h-[11rem] rounded object-contain" alt="" />
+                                                                    )}
+                                                                 </button>
+                                                             ) : msg.type === 'file' && msg.fileRef ? (
+                                                                 <button
+                                                                    type="button"
+                                                                    data-action="meeting.chat.attachment.open"
+                                                                    data-action-type="tap"
+                                                                    data-action-params={JSON.stringify({
+                                                                        messageId: msg.id,
+                                                                        fileId: msg.fileRef.fileId,
+                                                                    })}
+                                                                    onClick={() => { if (!openFileRefInViewer(msg.fileRef!)) showAttachmentUnavailable(); }}
+                                                                    className="min-w-[180px] flex items-center gap-3 text-left"
+                                                                 >
+                                                                    <span className="w-10 h-10 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
+                                                                        <IcFile size={22} />
+                                                                    </span>
+                                                                    <span className="min-w-0">
+                                                                        <span className="block truncate font-medium">{msg.fileName}</span>
+                                                                        <span className="block text-[11px] opacity-70">{Math.max(1, Math.ceil((msg.fileSize ?? 0) / 1024))} KB</span>
+                                                                    </span>
+                                                                 </button>
                                                              ) : (
                                                                  msg.text
                                                              )}
@@ -979,6 +1041,7 @@ export const MeetingPage: React.FC = () => {
                     </div>
                 </div>
             )}
+            <Toast message={s.file_attachment_unavailable} visible={attachmentToast} />
         </div>
     );
 };

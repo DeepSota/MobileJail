@@ -1,14 +1,23 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { IcNavBack, IcSearch, IcSmile, IcNavForward, IcFile } from '../../res/icons';
 import { useWechatStore } from '../../state';
 import { useShallow } from 'zustand/react/shallow';
 import { WechatSmartImage } from '../../components/WechatSmartImage';
 import { useActivityContext } from '../../../../os/ActivityContext';
-import { BackDispatcher } from '../../../../os/BackDispatcher';
+import { useActivityBackBlocker } from '../../../../os/hooks/useActivityBackBlocker';
 import { useWechatStrings } from '../../hooks/useWechatStrings';
+import { useWechatGestures } from '../../hooks/useWechatGestures';
 import { useAppNavigate } from '../../navigation';
 import * as TimeService from '../../../../os/TimeService';
 import * as FileSystem from '../../../../os/FileSystemService';
+import {
+  clonePayloadForApp,
+  parseIntent as parseFileShareIntent,
+  resolveFileRef,
+  rollbackPrivateAttachments,
+} from '../../../../os/FileShareService';
+import type { SharePayloadV1 } from '../../../../os/types/fileShare';
 import type { ChatSession, ContactItem } from '../../types';
 
 type ShareTarget = {
@@ -17,7 +26,9 @@ type ShareTarget = {
   avatar: string;
 };
 
-type View = 'main' | 'create';
+type SharePickTransitionId =
+  | 'share.forward.recentForward.select'
+  | 'share.forward.target.select';
 
 function formatFileSize(bytes?: number): string {
   if (!bytes) return '0 B';
@@ -60,13 +71,13 @@ const MainShareView: React.FC<{
   recentForwards: ShareTarget[];
   recentChats: (ShareTarget & { preview: string; time: string })[];
   contactMatches: ContactItem[];
-  onClose: () => void;
-  onPickTarget: (target: ShareTarget) => void;
+  onPickTarget: (target: ShareTarget, transitionId: SharePickTransitionId) => void;
   onOpenCreateChat: () => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
-}> = ({ recentForwards, recentChats, contactMatches, onClose, onPickTarget, onOpenCreateChat, searchQuery, onSearchChange }) => {
+}> = ({ recentForwards, recentChats, contactMatches, onPickTarget, onOpenCreateChat, searchQuery, onSearchChange }) => {
   const t = useWechatStrings();
+  const { bindTap, bindBack } = useWechatGestures();
   const isSearching = searchQuery.trim().length > 0;
   return (
     <div className="h-full w-full flex flex-col bg-app-bg">
@@ -74,11 +85,9 @@ const MainShareView: React.FC<{
       <div className="pt-10 h-[88px] flex items-center justify-between px-4 bg-app-surface border-b border-(--app-c-tw-border-gray-100) shrink-0 relative">
         <button
           type="button"
-          onClick={onClose}
           className="w-10 h-10 flex items-center justify-center -ml-2 active:opacity-60"
           aria-label={t.share_cancel}
-          data-action="share.forward.close"
-          data-action-type="close"
+          {...bindBack<HTMLButtonElement>()}
         >
           <IcNavBack size={26} className="text-app-text" />
         </button>
@@ -123,10 +132,11 @@ const MainShareView: React.FC<{
                     <button
                       key={`recent-fwd-${target.wxid}`}
                       type="button"
-                      onClick={() => onPickTarget(target)}
                       className="flex flex-col items-center gap-1 shrink-0 active:opacity-60"
-                      data-action="share.forward.recentForward.select"
-                      data-action-type="open"
+                      {...bindTap<HTMLButtonElement>('share.forward.recentForward.select', {
+                        params: { wxid: target.wxid },
+                        onTrigger: () => onPickTarget(target, 'share.forward.recentForward.select'),
+                      })}
                     >
                       <img
                         src={target.avatar}
@@ -145,10 +155,10 @@ const MainShareView: React.FC<{
               <span className="text-[14px] text-(--app-c-tw-text-gray-500)">{t.share_recent_chats}</span>
               <button
                 type="button"
-                onClick={onOpenCreateChat}
                 className="text-[14px] text-(--app-c-wechat-link) active:opacity-60"
-                data-action="share.forward.createChat"
-                data-action-type="open"
+                {...bindTap<HTMLButtonElement>('share.forward.createChat', {
+                  onTrigger: onOpenCreateChat,
+                })}
               >
                 {t.share_create_chat_link}
               </button>
@@ -159,10 +169,11 @@ const MainShareView: React.FC<{
                 <button
                   key={`recent-chat-${chat.wxid}`}
                   type="button"
-                  onClick={() => onPickTarget(chat)}
                   className="w-full flex items-center gap-3 px-4 py-2.5 active:bg-(--app-c-chat-list-item-bg-active) border-b border-(--app-c-tw-border-gray-100)"
-                  data-action="share.forward.target.select"
-                  data-action-type="open"
+                  {...bindTap<HTMLButtonElement>('share.forward.target.select', {
+                    params: { wxid: chat.wxid },
+                    onTrigger: () => onPickTarget(chat, 'share.forward.target.select'),
+                  })}
                 >
                   <img
                     src={chat.avatar}
@@ -194,10 +205,14 @@ const MainShareView: React.FC<{
                   <button
                     key={`contact-${contact.wxid}`}
                     type="button"
-                    onClick={() => onPickTarget({ wxid: contact.wxid, name: contact.name, avatar: contact.avatar })}
                     className="w-full flex items-center gap-3 px-4 py-2.5 active:bg-(--app-c-chat-list-item-bg-active) border-b border-(--app-c-tw-border-gray-100)"
-                    data-action="share.forward.target.select"
-                    data-action-type="open"
+                    {...bindTap<HTMLButtonElement>('share.forward.target.select', {
+                      params: { wxid: contact.wxid },
+                      onTrigger: () => onPickTarget(
+                        { wxid: contact.wxid, name: contact.name, avatar: contact.avatar },
+                        'share.forward.target.select',
+                      ),
+                    })}
                   >
                     <img
                       src={contact.avatar}
@@ -228,11 +243,11 @@ const CreateChatView: React.FC<{
   contacts: ContactItem[];
   selectedIds: Set<string>;
   onToggle: (wxid: string) => void;
-  onBack: () => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
-}> = ({ contacts, selectedIds, onToggle, onBack, searchQuery, onSearchChange }) => {
+}> = ({ contacts, selectedIds, onToggle, searchQuery, onSearchChange }) => {
   const t = useWechatStrings();
+  const { bindBack } = useWechatGestures();
 
   const filtered = useMemo(() => {
     if (!searchQuery.trim()) return contacts;
@@ -260,11 +275,9 @@ const CreateChatView: React.FC<{
       <div className="pt-10 h-[88px] flex items-center justify-between px-4 bg-app-bg shrink-0 relative">
         <button
           type="button"
-          onClick={onBack}
           className="w-10 h-10 flex items-center justify-center -ml-2 active:opacity-60"
           aria-label={t.share_cancel}
-          data-action="share.create.back"
-          data-action-type="close"
+          {...bindBack<HTMLButtonElement>()}
         >
           <IcNavBack size={26} className="text-app-text" />
         </button>
@@ -329,6 +342,7 @@ const CreateChatView: React.FC<{
                     className="w-full flex items-center px-4 py-2.5 active:bg-(--app-c-contacts-item-bg-active) border-b border-(--app-c-tw-border-gray-100)"
                     data-action="share.create.contact.toggle"
                     data-action-type="modify"
+                    data-action-params={JSON.stringify({ wxid: contact.wxid })}
                   >
                     <div className={`w-[22px] h-[22px] rounded-full border mr-4 flex items-center justify-center shrink-0 ${
                       checked
@@ -382,17 +396,19 @@ const ConfirmSheet: React.FC<{
   onCancel: () => void;
   onSend: () => void;
   sending: boolean;
-}> = ({ targets, shareType, imagePath, imageCount, fileName, fileSize, fileCount, linkPreview, caption, onCaptionChange, onCancel, onSend, sending }) => {
+  error: string;
+}> = ({ targets, shareType, imagePath, imageCount, fileName, fileSize, fileCount, linkPreview, caption, onCaptionChange, onCancel, onSend, sending, error }) => {
   const t = useWechatStrings();
+  const { bindTap, bindBack } = useWechatGestures();
   const primary = targets[0];
   const extra = targets.length - 1;
 
   return (
     <div className="absolute inset-0 z-[300] flex flex-col">
-      <div className="flex-1 bg-black/35" onClick={onCancel} />
+      <div className="flex-1 bg-black/35" onClick={() => { if (!sending) onCancel(); }} />
       <div className="bg-app-surface rounded-t-[14px] animate-slide-up shadow-2xl">
         <div className="px-5 pt-4 pb-3 text-[15px] text-app-text">
-          {linkPreview ? '分享链接给' : shareType === 'file' ? t.share_send_file_to : t.share_send_image_to}
+          {linkPreview ? t.share_send_link_to : shareType === 'file' ? t.share_send_file_to : t.share_send_image_to}
         </div>
 
         {/* Selected target row */}
@@ -407,7 +423,9 @@ const ConfirmSheet: React.FC<{
             <div className="text-[15px] text-app-text truncate">
               {primary.name}
               {extra > 0 && (
-                <span className="ml-1 text-(--app-c-tw-text-gray-500)">等{targets.length}人</span>
+                <span className="ml-1 text-(--app-c-tw-text-gray-500)">
+                  {t.share_targets_prefix}{targets.length}{t.share_targets_suffix}
+                </span>
               )}
             </div>
           </div>
@@ -423,7 +441,7 @@ const ConfirmSheet: React.FC<{
               )}
               <div className="px-2.5 py-2">
                 <div className="text-[12px] text-app-text font-medium line-clamp-2 leading-snug">
-                  {linkPreview.title || '链接'}
+                  {linkPreview.title || t.share_link_fallback}
                 </div>
                 <div className="text-[10px] text-gray-400 mt-0.5">
                   {linkPreview.source || ''}
@@ -432,7 +450,7 @@ const ConfirmSheet: React.FC<{
             </div>
           ) : shareType === 'image' ? (
             <div className="relative w-[120px] h-[160px] bg-(--app-c-tw-bg-gray-100) rounded-[6px] overflow-hidden">
-              <WechatSmartImage src={imagePath} className="w-full h-full object-cover" alt="preview" />
+              <WechatSmartImage src={imagePath} className="w-full h-full object-cover" alt={t.share_preview_alt} />
               {imageCount > 1 && (
                 <div className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded-full bg-black/60 text-white text-[11px]">
                   +{imageCount - 1}
@@ -452,6 +470,12 @@ const ConfirmSheet: React.FC<{
             </div>
           )}
         </div>
+
+        {error && (
+          <div className="px-5 pb-3 text-center text-[13px] text-red-500" role="status">
+            {error}
+          </div>
+        )}
 
         {/* Caption input */}
         <div className="px-4 pb-3">
@@ -473,21 +497,20 @@ const ConfirmSheet: React.FC<{
         <div className="px-4 pt-1 pb-6 flex gap-3">
           <button
             type="button"
-            onClick={onCancel}
             disabled={sending}
             className="flex-1 h-11 rounded-[8px] bg-(--app-c-tw-bg-gray-100) text-[16px] text-app-text active:opacity-80 disabled:opacity-50"
-            data-action="share.confirm.cancel"
-            data-action-type="close"
+            {...bindBack<HTMLButtonElement>()}
           >
             {t.share_cancel}
           </button>
           <button
             type="button"
-            onClick={onSend}
             disabled={sending}
             className="flex-1 h-11 rounded-[8px] bg-(--app-primary) text-[16px] font-medium text-white active:bg-(--app-primary-dark) disabled:opacity-50"
-            data-action="share.confirm.send"
-            data-action-type="modify"
+            {...bindTap<HTMLButtonElement>(
+              { kind: 'action', id: 'share.confirm.send' },
+              { onTrigger: onSend },
+            )}
           >
             {t.share_send_button}
           </button>
@@ -499,10 +522,13 @@ const ConfirmSheet: React.FC<{
 
 // ----- Top-level page -----
 export const ShareForwardPage: React.FC = () => {
+  const t = useWechatStrings();
   const { activityId } = useActivityContext();
+  const location = useLocation();
   const { go, back } = useAppNavigate();
   const sendImages = useWechatStore(s => s.sendImages);
   const sendFiles = useWechatStore(s => s.sendFiles);
+  const sendSharedAttachmentsToTargets = useWechatStore(s => s.sendSharedAttachmentsToTargets);
   const sendMessage = useWechatStore(s => s.sendMessage);
   const sendLinkMessage = useWechatStore(s => s.sendLinkMessage);
 
@@ -513,13 +539,20 @@ export const ShareForwardPage: React.FC = () => {
   })));
 
   // Parse intent payload: determine share type and extract paths/file metadata
-  const { shareType, intentImages, intentFiles, intentLink } = useMemo(() => {
+  const { shareType, intentImages, intentFiles, intentLink, sharePayload } = useMemo(() => {
     const os = window.__OS__;
     const payload = os?.getIntentPayload?.(activityId) ?? os?.getIntentPayload?.('wechat');
     const data = (payload as { data?: Record<string, any>; type?: string } | null)?.data;
     const intentType = (payload as { type?: string } | null)?.type ?? '';
 
-    if (!data) return { shareType: 'image' as const, intentImages: [] as string[], intentFiles: [] as { path: string; name: string; size: number; mimeType?: string }[], intentLink: null as { cover?: string; title?: string; url?: string; source?: string } | null };
+    const emptyResult = {
+      shareType: 'image' as const,
+      intentImages: [] as string[],
+      intentFiles: [] as { path: string; name: string; size: number; mimeType?: string }[],
+      intentLink: null as { cover?: string; title?: string; url?: string; source?: string } | null,
+      sharePayload: null as SharePayloadV1 | null,
+    };
+    if (!data) return emptyResult;
 
     // Detect link share (e.g. Bilibili video share with title)
     const hasLinkMeta = typeof data.linkTitle === 'string' && data.linkTitle.length > 0;
@@ -538,6 +571,34 @@ export const ShareForwardPage: React.FC = () => {
           url: typeof data.linkUrl === 'string' ? data.linkUrl : '',
           source: typeof data.linkSource === 'string' ? data.linkSource : '',
         },
+        sharePayload: null as SharePayloadV1 | null,
+      };
+    }
+
+    const parsedShare = parseFileShareIntent(payload);
+    if (parsedShare?.files.length) {
+      const resolved = parsedShare.files.map(file => ({ file, node: resolveFileRef(file)?.node }));
+      const isFileShare = resolved.some(({ file }) => !file.mimeType.startsWith('image/'));
+      if (isFileShare) {
+        return {
+          shareType: 'file' as const,
+          intentImages: [] as string[],
+          intentFiles: resolved.map(({ file, node }) => ({
+            path: node?.path ?? file.uri,
+            name: file.name,
+            size: file.size,
+            mimeType: file.mimeType,
+          })),
+          intentLink: null,
+          sharePayload: parsedShare,
+        };
+      }
+      return {
+        shareType: 'image' as const,
+        intentImages: resolved.map(({ file, node }) => node?.path ?? file.uri),
+        intentFiles: [] as { path: string; name: string; size: number; mimeType?: string }[],
+        intentLink: null,
+        sharePayload: parsedShare,
       };
     }
 
@@ -546,7 +607,7 @@ export const ShareForwardPage: React.FC = () => {
       ? stream.filter((s): s is string => typeof s === 'string' && s.length > 0)
       : (typeof stream === 'string' && stream.length > 0 ? [stream] : []);
 
-    if (paths.length === 0) return { shareType: 'image' as const, intentImages: [] as string[], intentFiles: [] as { path: string; name: string; size: number; mimeType?: string }[], intentLink: null as { cover?: string; title?: string; url?: string; source?: string } | null };
+    if (paths.length === 0) return emptyResult;
 
     // Determine share type from intent type or MIME of first file
     const isFileShare = intentType.startsWith('application/') || (() => {
@@ -559,61 +620,56 @@ export const ShareForwardPage: React.FC = () => {
         const node = FileSystem.getNode(p);
         return {
           path: p,
-          name: node?.name ?? p.split('/').pop() ?? '文件',
+          name: node?.name ?? p.split('/').pop() ?? t.share_file_fallback,
           size: node?.size ?? 0,
           mimeType: node?.mimeType ?? data.mimeType ?? 'application/octet-stream',
         };
       });
-      return { shareType: 'file' as const, intentImages: [] as string[], intentFiles: files, intentLink: null as { cover?: string; title?: string; url?: string; source?: string } | null };
+      return { shareType: 'file' as const, intentImages: [] as string[], intentFiles: files, intentLink: null as { cover?: string; title?: string; url?: string; source?: string } | null, sharePayload: null as SharePayloadV1 | null };
     }
 
-    return { shareType: 'image' as const, intentImages: paths, intentFiles: [] as { path: string; name: string; size: number; mimeType?: string }[], intentLink: null as { cover?: string; title?: string; url?: string; source?: string } | null };
-  }, [activityId]);
+    return { shareType: 'image' as const, intentImages: paths, intentFiles: [] as { path: string; name: string; size: number; mimeType?: string }[], intentLink: null as { cover?: string; title?: string; url?: string; source?: string } | null, sharePayload: null as SharePayloadV1 | null };
+  }, [activityId, t.share_file_fallback]);
 
-  const [view, setView] = useState<View>('main');
+  const routeSearch = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const view = routeSearch.get('view') === 'create' ? 'create' : 'main';
+  const routeState = location.state as { shareTargetWxid?: unknown } | null;
+  const confirmWxid = routeSearch.get('dialog') === 'confirm'
+    && typeof routeState?.shareTargetWxid === 'string'
+    ? routeState.shareTargetWxid
+    : '';
   const [searchMain, setSearchMain] = useState('');
   const [searchCreate, setSearchCreate] = useState('');
   const [createSelectedIds, setCreateSelectedIds] = useState<Set<string>>(new Set());
-  const [confirmTargets, setConfirmTargets] = useState<ShareTarget[] | null>(null);
   const [caption, setCaption] = useState('');
   const [sending, setSending] = useState(false);
-
-  // 取消分享：回到 wechat 主页（singleTask 启动后历史是 ['/', '/share/forward']，
-  // 退一步即落到 '/'）。本入口完全运行在微信 Task 内，不再借栈到调用方。
-  const cancelAndClose = useCallback(() => {
-    back();
-  }, [back]);
+  const [sendError, setSendError] = useState('');
+  const sendingRef = useRef(false);
+  useActivityBackBlocker('wechat.fileShare', sending);
 
   const closeConfirm = useCallback(() => {
-    setConfirmTargets(null);
+    if (sendingRef.current) return;
     setCaption('');
-  }, []);
-
-  // BackDispatcher（priority 150）覆盖 App 默认 back（priority 100）：
-  // - sending 中：吞掉 back，避免发送途中误退
-  // - confirm 浮层打开：先关浮层
-  // - create 视图：先回到 main 视图
-  // - 否则：cancelAndClose() 回到 wechat 主页（singleTask 启动后历史为 ['/', '/share/forward']）
-  useEffect(() => {
-    return BackDispatcher.register('wechat.share.forward', () => {
-      const latestState = window.__OS__?.getState?.();
-      const activeTask = latestState?.activeTaskId
-        ? latestState.tasks.find(task => task.taskId === latestState.activeTaskId)
-        : null;
-      const topActivityId = activeTask?.stack[activeTask.stack.length - 1]?.activityId;
-      if (topActivityId !== activityId) return false;
-      if (sending) return true;
-      if (confirmTargets) { closeConfirm(); return true; }
-      if (view === 'create') { setView('main'); setCreateSelectedIds(new Set()); return true; }
-      cancelAndClose();
-      return true;
-    }, 150);
-  }, [activityId, view, confirmTargets, sending, cancelAndClose, closeConfirm]);
+    setSendError('');
+    back();
+  }, [back]);
 
   const visibleContacts = useMemo(
     () => contacts.filter(c => !c.isBlacklisted && c.wxid !== currentUserWxid),
     [contacts, currentUserWxid],
   );
+
+  const confirmTargets = useMemo<ShareTarget[] | null>(() => {
+    if (!confirmWxid) return null;
+    const chat = chats.find(item => item.id === confirmWxid);
+    if (chat) {
+      return [{ wxid: chat.id, name: chat.user.name, avatar: chat.user.avatar }];
+    }
+    const contact = visibleContacts.find(item => item.wxid === confirmWxid);
+    return contact
+      ? [{ wxid: contact.wxid, name: contact.name, avatar: contact.avatar }]
+      : null;
+  }, [chats, confirmWxid, visibleContacts]);
 
   const recentForwards = useMemo<ShareTarget[]>(() => {
     return chats
@@ -635,7 +691,11 @@ export const ShareForwardPage: React.FC = () => {
       const lastTs = lastMessageTime(chat);
       const last = chat.messages?.[chat.messages.length - 1];
       const preview = last
-        ? (last.type === 'image' ? '[图片]' : (last.content || ''))
+        ? (last.type === 'image'
+            ? t.share_preview_image
+            : last.type === 'file'
+              ? t.share_preview_file
+              : (last.content || ''))
         : '';
       let time = '';
       if (lastTs) {
@@ -650,13 +710,24 @@ export const ShareForwardPage: React.FC = () => {
         time,
       };
     });
-  }, [chats, currentUserWxid, searchMain]);
+  }, [chats, currentUserWxid, searchMain, t.share_preview_file, t.share_preview_image]);
 
-  const handlePickTarget = useCallback((target: ShareTarget) => {
-    if (intentImages.length === 0 && intentFiles.length === 0) return;
-    setConfirmTargets([target]);
+  const handlePickTarget = useCallback((target: ShareTarget, transitionId: SharePickTransitionId) => {
+    if (intentImages.length === 0 && intentFiles.length === 0 && !intentLink) return;
+    setSendError('');
     setCaption('');
-  }, [intentImages.length, intentFiles.length]);
+    go(
+      transitionId,
+      { wxid: target.wxid },
+      { state: { shareTargetWxid: target.wxid } },
+    );
+  }, [go, intentFiles.length, intentImages.length, intentLink]);
+
+  const openCreateChat = useCallback(() => {
+    setCreateSelectedIds(new Set());
+    setSearchCreate('');
+    go('share.forward.createChat');
+  }, [go]);
 
   const contactMatches = useMemo(() => {
     const q = searchMain.trim().toLowerCase();
@@ -664,21 +735,55 @@ export const ShareForwardPage: React.FC = () => {
     return visibleContacts.filter(c => c.name.toLowerCase().includes(q));
   }, [visibleContacts, searchMain]);
 
-  const handleSend = useCallback(() => {
-    if (!confirmTargets || confirmTargets.length === 0 || sending) return;
+  const handleSend = useCallback(async () => {
+    if (!confirmTargets || confirmTargets.length === 0 || sendingRef.current) return;
     if (shareType === 'image' && intentImages.length === 0 && !intentLink) return;
     if (shareType === 'file' && intentFiles.length === 0) return;
+    sendingRef.current = true;
     setSending(true);
+    setSendError('');
     const trimmedCaption = caption.trim();
-    for (const target of confirmTargets) {
-      if (intentLink) {
-        sendLinkMessage(target.wxid, intentLink);
-      } else if (shareType === 'image') {
-        sendImages(target.wxid, intentImages);
-      } else {
-        sendFiles(target.wxid, intentFiles);
+    let copiedFiles: SharePayloadV1['files'] = [];
+    let attachmentCommitted = false;
+    try {
+      const savedPayload = sharePayload
+        ? await clonePayloadForApp(sharePayload, 'wechat')
+        : null;
+      copiedFiles = savedPayload?.files ?? [];
+      if (savedPayload?.files.length) {
+        attachmentCommitted = sendSharedAttachmentsToTargets(
+          confirmTargets.map((target) => target.wxid),
+          savedPayload.files,
+        );
+        if (!attachmentCommitted) {
+          await rollbackPrivateAttachments(savedPayload.files, 'wechat');
+          copiedFiles = [];
+          sendingRef.current = false;
+          setSending(false);
+          setSendError(t.share_recipient_unavailable);
+          return;
+        }
       }
-      if (trimmedCaption) sendMessage(target.wxid, trimmedCaption);
+      for (const target of confirmTargets) {
+        if (intentLink) {
+          sendLinkMessage(target.wxid, intentLink);
+        } else if (savedPayload?.files.length) {
+          // The attachment batch was committed atomically above.
+        } else if (shareType === 'image') {
+          sendImages(target.wxid, intentImages);
+        } else {
+          sendFiles(target.wxid, intentFiles);
+        }
+        if (trimmedCaption) sendMessage(target.wxid, trimmedCaption);
+      }
+    } catch {
+      if (copiedFiles.length > 0 && !attachmentCommitted) {
+        await rollbackPrivateAttachments(copiedFiles, 'wechat');
+      }
+      sendingRef.current = false;
+      setSending(false);
+      setSendError(t.share_send_failed);
+      return;
     }
     // 真机微信：发送后跳到目标会话页面，wechat 主页留作返回栈底。
     // 这里 replace 当前 '/share/forward' 为 '/chat/:id'，使历史变为 ['/', '/chat/:id']。
@@ -686,7 +791,7 @@ export const ShareForwardPage: React.FC = () => {
     requestAnimationFrame(() => {
       go('share.forward.send.toChat', { id: target.wxid });
     });
-  }, [confirmTargets, sending, shareType, intentImages, intentFiles, intentLink, caption, sendImages, sendFiles, sendLinkMessage, sendMessage, go]);
+  }, [confirmTargets, shareType, intentImages, intentFiles, intentLink, sharePayload, caption, sendImages, sendFiles, sendSharedAttachmentsToTargets, sendLinkMessage, sendMessage, go, t.share_recipient_unavailable, t.share_send_failed]);
 
   const toggleCreateContact = (wxid: string) => {
     setCreateSelectedIds(prev => {
@@ -706,9 +811,8 @@ export const ShareForwardPage: React.FC = () => {
           recentForwards={recentForwards}
           recentChats={recentChats}
           contactMatches={contactMatches}
-          onClose={cancelAndClose}
           onPickTarget={handlePickTarget}
-          onOpenCreateChat={() => setView('create')}
+          onOpenCreateChat={openCreateChat}
           searchQuery={searchMain}
           onSearchChange={setSearchMain}
         />
@@ -717,7 +821,6 @@ export const ShareForwardPage: React.FC = () => {
           contacts={visibleContacts}
           selectedIds={createSelectedIds}
           onToggle={toggleCreateContact}
-          onBack={() => { setView('main'); setCreateSelectedIds(new Set()); }}
           searchQuery={searchCreate}
           onSearchChange={setSearchCreate}
         />
@@ -729,7 +832,7 @@ export const ShareForwardPage: React.FC = () => {
           shareType={shareType}
           imagePath={intentImages[0] ?? ''}
           imageCount={intentImages.length}
-          fileName={intentFiles[0]?.name ?? '文件'}
+          fileName={intentFiles[0]?.name ?? t.share_file_fallback}
           fileSize={intentFiles[0] ? formatFileSize(intentFiles[0].size) : ''}
           fileCount={intentFiles.length}
           linkPreview={intentLink}
@@ -738,6 +841,7 @@ export const ShareForwardPage: React.FC = () => {
           onCancel={closeConfirm}
           onSend={handleSend}
           sending={sending}
+          error={sendError}
         />
       )}
     </div>

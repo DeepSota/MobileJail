@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { IcNavBack, IcExpand } from '../res/icons';
+import { IcNavBack } from '../res/icons';
+import { ImageIcon } from 'lucide-react';
 import { AttachmentPanel } from './AttachmentPanel';
-import { Toast } from '@/os/components/Toast';
-import { markConversationRead, sendImage, sendMessage, sendFile, useSmsProviderState } from '../state';
+import { markConversationRead, sendMessage, sendSharedAttachments, useSmsProviderState } from '../state';
 import { useTheme } from '../../../os/ThemeContext';
 import { NinePatch } from '../../../os/ui/ninepatch/NinePatch';
 import { SendArrowIcon } from '../res/icons';
@@ -13,11 +13,18 @@ import { useAppStrings } from '@/os/useAppStrings';
 import { useSmsGestures } from '../hooks/useSmsGestures';
 import * as MediaService from '../../../os/MediaService';
 import type { Message } from '../types';
+import type { FileRefV1 } from '../../../os/types/fileShare';
+import { SharedFileImage } from '../../../os/components/SharedFileImage';
+import { clonePayloadForApp, createPayload as createFileSharePayload, createViewIntent, openFileRefInViewer } from '../../../os/FileShareService';
+import { Toast } from '../../../os/components/Toast';
 
-function formatFileSize(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${bytes} B`;
+function formatFileSize(
+  bytes: number,
+  units: { mb: string; kb: string; bytes: string },
+): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} ${units.mb}`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} ${units.kb}`;
+  return `${bytes} ${units.bytes}`;
 }
 
 /** File icon SVG */
@@ -29,28 +36,80 @@ const FileIcon: React.FC<{ size?: number; className?: string }> = ({ size = 24, 
 );
 
 const ImageBubble: React.FC<{
+  messageId: string;
   outgoing: boolean;
   src: string;
+  fileRef?: FileRefV1;
   timestamp: string;
   status?: string;
-}> = ({ outgoing, src, timestamp, status }) => {
+  onOpenError: () => void;
+}> = ({ messageId, outgoing, src, fileRef, timestamp, status, onOpenError }) => {
   const s = useAppStrings(strings, stringsEn);
   const [preview, setPreview] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  // Track whether an objectUrl has resolved so we don't treat the transient
+  // fallbackSrc failure as permanent.  When fileRef is present, the async
+  // SharedFileImage will eventually produce a blob URL; the temporary
+  // fallbackSrc (content://simfs/…) is not browser-loadable but that's
+  // expected — we must not lock into the error state before the real URL
+  // arrives.
+  const [resolved, setResolved] = useState(false);
+  const imageContent = fileRef ? (
+    <SharedFileImage
+      fileRef={fileRef}
+      fallbackSrc={src}
+      alt=""
+      className="max-h-[200px] w-auto object-cover"
+      draggable={false}
+      onLoad={() => { setLoadError(false); setResolved(true); }}
+      onError={() => { if (resolved) setLoadError(true); }}
+    />
+  ) : (
+    <img
+      src={src}
+      alt=""
+      className="max-h-[200px] w-auto object-cover"
+      draggable={false}
+      onError={() => setLoadError(true)}
+    />
+  );
+  // When the image fails to load (e.g. blob not yet in IndexedDB), show a
+  // visible placeholder so the bubble doesn't collapse to 0 height and the
+  // attachment remains discoverable.
+  const fallbackContent = loadError ? (
+    <div className="w-[180px] h-[120px] bg-gray-100 rounded-xl flex flex-col items-center justify-center gap-1 text-gray-400">
+      <ImageIcon size={28} />
+      <span className="text-[11px] truncate max-w-[140px]">{s.attachment_image}</span>
+    </div>
+  ) : null;
+  const buttonClassName = `max-w-[78%] rounded-2xl overflow-hidden ${outgoing ? 'rounded-tr-md' : 'rounded-tl-md'} active:opacity-90`;
 
   return (
     <div className={`flex flex-col ${outgoing ? 'items-end' : 'items-start'}`}>
-      <button
-        type="button"
-        className={`max-w-[78%] rounded-2xl overflow-hidden ${outgoing ? 'rounded-tr-md' : 'rounded-tl-md'} active:opacity-90`}
-        onClick={() => setPreview(true)}
-      >
-        <img
-          src={src}
-          alt=""
-          className="max-h-[200px] w-auto object-cover"
-          draggable={false}
-        />
-      </button>
+      {fileRef ? (
+        <button
+          type="button"
+          data-action="sms.attachment.open"
+          data-action-type="tap"
+          data-action-params={JSON.stringify({ messageId, fileId: fileRef.fileId })}
+          className={buttonClassName}
+          onClick={() => {
+            if (loadError) { onOpenError(); return; }
+            const intent = createViewIntent(fileRef, { targetAppId: 'gallery' });
+            if (!intent || !window.__OS__?.startActivity('gallery', intent)) onOpenError();
+          }}
+        >
+          {fallbackContent || imageContent}
+        </button>
+      ) : (
+        <button
+          type="button"
+          className={buttonClassName}
+          onClick={() => { if (!loadError) setPreview(true); }}
+        >
+          {fallbackContent || imageContent}
+        </button>
+      )}
       <div className="mt-1 text-[11px] text-gray-400 flex items-center gap-2">
         <span>{timestamp}</span>
         {outgoing && status && <span>{status === 'sending' ? s.status_sending : s.status_sent}</span>}
@@ -70,27 +129,56 @@ const ImageBubble: React.FC<{
 };
 
 const FileBubble: React.FC<{
+  messageId: string;
   outgoing: boolean;
   fileName: string;
   fileSize?: number;
   mimeType?: string;
   timestamp: string;
   status?: string;
-}> = ({ outgoing, fileName, fileSize, timestamp, status }) => {
+  fileRef?: FileRefV1;
+  onOpenError: () => void;
+}> = ({ messageId, outgoing, fileName, fileSize, timestamp, status, fileRef, onOpenError }) => {
   const s = useAppStrings(strings, stringsEn);
   const borderColor = outgoing ? 'border-app-primary/30' : 'border-gray-100';
 
+  const cardClassName = `max-w-[78%] px-3 py-2.5 rounded-2xl ${outgoing ? 'rounded-tr-md bg-app-primary/10' : 'rounded-tl-md bg-app-surface'} border ${borderColor} flex items-center gap-3 text-left ${fileRef ? 'active:opacity-80' : 'cursor-default'}`;
+  const cardContent = (
+    <>
+      <FileIcon size={28} className={outgoing ? 'text-app-primary' : 'text-gray-500'} />
+      <div className="min-w-0 flex-1">
+        <div className="text-[14px] font-medium truncate text-app-text">{fileName}</div>
+        {fileSize != null ? (
+          <div className="text-[11px] text-gray-400">
+            {formatFileSize(fileSize, {
+              mb: s.file_size_mb,
+              kb: s.file_size_kb,
+              bytes: s.file_size_bytes,
+            })}
+          </div>
+        ) : null}
+      </div>
+    </>
+  );
+
   return (
     <div className={`flex flex-col ${outgoing ? 'items-end' : 'items-start'}`}>
-      <div className={`max-w-[78%] px-3 py-2.5 rounded-2xl ${outgoing ? 'rounded-tr-md bg-app-primary/10' : 'rounded-tl-md bg-app-surface'} border ${borderColor} flex items-center gap-3`}>
-        <FileIcon size={28} className={outgoing ? 'text-app-primary' : 'text-gray-500'} />
-        <div className="min-w-0 flex-1">
-          <div className={`text-[14px] font-medium truncate ${outgoing ? 'text-app-text' : 'text-app-text'}`}>{fileName}</div>
-          {fileSize != null ? (
-            <div className="text-[11px] text-gray-400">{formatFileSize(fileSize)}</div>
-          ) : null}
+      {fileRef ? (
+        <button
+          type="button"
+          data-action="sms.attachment.open"
+          data-action-type="tap"
+          data-action-params={JSON.stringify({ messageId, fileId: fileRef.fileId })}
+          onClick={() => { if (!openFileRefInViewer(fileRef)) onOpenError(); }}
+          className={cardClassName}
+        >
+          {cardContent}
+        </button>
+      ) : (
+        <div className={cardClassName} aria-disabled="true">
+          {cardContent}
         </div>
-      </div>
+      )}
       <div className="mt-1 text-[11px] text-gray-400 flex items-center gap-2">
         <span>{timestamp}</span>
         {outgoing && status && <span>{status === 'sending' ? s.status_sending : s.status_sent}</span>}
@@ -112,6 +200,7 @@ const TextBubble: React.FC<{
         : 'bg-app-surface text-app-text rounded-2xl rounded-tl-md border border-gray-100';
 
     const themedBg = useMemo(() => {
+        void version;
         const pick = (hints: string[]) => hints.map((h) => themeService.getAppAsset('mms', h)).find(Boolean) || null;
         return outgoing
             ? pick(['bubble_out', 'bubble_send', 'msg_out', 'message_out', 'chat_to', 'sms_out'])
@@ -140,27 +229,35 @@ const TextBubble: React.FC<{
 
 const MessageBubble: React.FC<{
   message: Message;
-}> = ({ message }) => {
+  onOpenError: () => void;
+}> = ({ message, onOpenError }) => {
+  const s = useAppStrings(strings, stringsEn);
   const msgType = message.type || 'text';
   if (msgType === 'image') {
     return (
       <ImageBubble
+        messageId={message.id}
         outgoing={message.isOutgoing}
         src={message.content}
+        fileRef={message.fileRef}
         timestamp={message.timestamp}
         status={message.status}
+        onOpenError={onOpenError}
       />
     );
   }
   if (msgType === 'file') {
     return (
       <FileBubble
+        messageId={message.id}
         outgoing={message.isOutgoing}
-        fileName={message.fileName || 'file'}
+        fileName={message.fileName || s.attachment_file}
         fileSize={message.fileSize}
         mimeType={message.mimeType}
         timestamp={message.timestamp}
         status={message.status}
+        fileRef={message.fileRef}
+        onOpenError={onOpenError}
       />
     );
   }
@@ -190,14 +287,16 @@ export const ConversationDetailPage: React.FC = () => {
 
     const [text, setText] = useState('');
     const [showAttachments, setShowAttachments] = useState(false);
-    const [toast, setToast] = useState<{ visible: boolean; message: string }>({ visible: false, message: '' });
+    const [sending, setSending] = useState(false);
+    const [toast, setToast] = useState<string | null>(null);
+    const sendingRef = useRef(false);
 
     const listRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
         if (!conversationId) return;
         markConversationRead(conversationId);
-    }, [conversationId, markConversationRead]);
+    }, [conversationId]);
 
     useEffect(() => {
         // Scroll to bottom on first open & when new message arrives
@@ -206,18 +305,19 @@ export const ConversationDetailPage: React.FC = () => {
         el.scrollTop = el.scrollHeight;
     }, [messages.length]);
 
-    const showToast = (message: string) => {
-        setToast({ visible: true, message });
-        window.setTimeout(() => setToast({ visible: false, message: '' }), 1200);
-    };
-
-    const canSend = text.trim().length > 0 && !!conversationId && !!conversation;
+    const canSend = text.trim().length > 0 && !!conversationId && !!conversation && !sending;
     const handleSend = () => {
-        if (!canSend || !conversationId || !conversation) return;
+        if (sendingRef.current || !canSend || !conversationId || !conversation) return;
+        sendingRef.current = true;
+        setSending(true);
         const content = text.trim();
         setText('');
         setShowAttachments(false);
         sendMessage(conversationId, content);
+        window.requestAnimationFrame(() => {
+            sendingRef.current = false;
+            setSending(false);
+        });
     };
 
     // Image picker via OS MediaService
@@ -226,11 +326,16 @@ export const ConversationDetailPage: React.FC = () => {
       try {
         const result = await MediaService.pickMedia({ type: 'image', multiple: true, maxSelect: 9 });
         if (result.cancelled || !result.selected.length || !conversationId) return;
-        for (const item of result.selected) {
-          sendImage(conversationId, item.uri || item.path);
-        }
-      } catch {
-        // picker dismissed or not available
+        // Use item.id (stable node ID → getNodeById) to create proper FileRefV1
+        // with fileName + fileRef, matching NewMessagePage's flow which
+        // correctly stores metadata for rendering + judging.
+        const inputs = result.selected.map((item) => item.id);
+        const payload = createFileSharePayload(inputs);
+        if (!payload.files.length) return;
+        const cloned = await clonePayloadForApp(payload, 'sms');
+        sendSharedAttachments(conversationId, cloned.files);
+      } catch (err) {
+        console.error('[SMS] handleSelectImage failed:', err);
       }
     };
 
@@ -259,8 +364,6 @@ export const ConversationDetailPage: React.FC = () => {
 
     return (
         <div className="h-full bg-app-bg flex flex-col">
-            <Toast message={toast.message} visible={toast.visible} />
-
             {/* Status bar spacer */}
             <div className="h-12 flex-shrink-0" />
 
@@ -281,7 +384,14 @@ export const ConversationDetailPage: React.FC = () => {
                     <div className="text-center text-[13px] text-gray-400 mt-10">{s.empty_messages}</div>
                 ) : (
                     messages.map((m) => (
-                        <MessageBubble key={m.id} message={m} />
+                        <MessageBubble
+                            key={m.id}
+                            message={m}
+                            onOpenError={() => {
+                                setToast(s.attachment_unavailable);
+                                window.setTimeout(() => setToast(null), 2200);
+                            }}
+                        />
                     ))
                 )}
                 <div className="h-2" />
@@ -319,7 +429,9 @@ export const ConversationDetailPage: React.FC = () => {
                             value={text}
                             onChange={(e) => setText(e.target.value)}
                             onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleSend();
+                                if (e.key !== 'Enter') return;
+                                e.preventDefault();
+                                if (!e.repeat && !e.nativeEvent.isComposing && canSend) handleSend();
                             }}
                             className="flex-1 text-[14px] text-app-text outline-none"
                             placeholder={s.sms_placeholder}
@@ -327,16 +439,20 @@ export const ConversationDetailPage: React.FC = () => {
                     </div>
 
                     <button
+                        type="button"
                         className={`w-11 h-11 flex items-center justify-center rounded-full ${canSend ? 'bg-app-primary' : 'bg-gray-200'
                             }`}
                         onPointerDown={(e) => e.preventDefault()}
                         onClick={handleSend}
-                        aria-disabled={!canSend}
+                        data-action="sms.conversation.send"
+                        data-action-type="tap"
+                        disabled={!canSend}
                     >
                         <SendArrowIcon active={canSend} />
                     </button>
                 </div>
             </div>
+            <Toast message={toast ?? ''} visible={Boolean(toast)} />
         </div>
     );
 };

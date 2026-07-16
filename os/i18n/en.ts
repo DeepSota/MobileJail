@@ -16,6 +16,13 @@ export const OS_EN: Record<string, string> = {
   '打开': 'Open',
   '搜索': 'Search',
   '无最近任务': 'No Recent Tasks',
+  '选择应用': 'Choose an app',
+  '取消': 'Cancel',
+  '发送': 'Send',
+  '个文件': 'files',
+  '1 个文件': '1 file',
+  '分享内容': 'Share content',
+  '{app}读取了剪贴板': '{app} accessed the clipboard',
 };
 
 /** appRegistry 加载 manifest 后注入 App 名称翻译 */

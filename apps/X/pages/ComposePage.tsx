@@ -8,8 +8,45 @@ import { useXGestures } from '../hooks/useXGestures';
 import { useXStrings } from '../hooks/useXStrings';
 import { XImage } from '../components/XMedia';
 import * as MediaService from '../../../os/MediaService';
+import * as FileSystem from '../../../os/FileSystemService';
 
 const MAX_IMAGES = 4;
+
+/** Resolve a file-system path to a displayable URI (handles IndexedDB files). */
+function useResolvedUri(path: string | null): string | null {
+  const [uri, setUri] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (!path) { setUri(null); return; }
+    // Sync check first (preset files + cached blob URLs)
+    const syncUri = FileSystem.getFileUri(path);
+    if (syncUri) { setUri(syncUri); return; }
+    // Async for IndexedDB files without cached blob URL
+    let cancelled = false;
+    FileSystem.getFileUriAsync(path).then(u => {
+      if (!cancelled) setUri(u);
+    });
+    return () => { cancelled = true; };
+  }, [path]);
+  return uri;
+}
+
+const ResolvedImage: React.FC<{ path: string; className?: string; alt?: string; onRemove?: () => void }> = ({ path, className, alt, onRemove }) => {
+  const uri = useResolvedUri(path);
+  return (
+    <>
+      {uri && <img src={uri} className={className} alt={alt || ''} />}
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="absolute top-2 right-2 w-6 h-6 bg-black/60 rounded-full flex items-center justify-center text-white"
+        >
+          <IcClose size={14} />
+        </button>
+      )}
+    </>
+  );
+};
 
 export const ComposePage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -55,8 +92,8 @@ export const ComposePage: React.FC = () => {
       const remaining = MAX_IMAGES - selectedImages.length;
       const result = await MediaService.pickMedia({ type: 'image', multiple: true, maxSelect: remaining });
       if (!result.cancelled && result.selected.length > 0) {
-        const uris = result.selected.map(item => item.uri).filter(Boolean);
-        setSelectedImages(prev => [...prev, ...uris].slice(0, MAX_IMAGES));
+        const paths = result.selected.map(item => item.path).filter(Boolean);
+        setSelectedImages(prev => [...prev, ...paths].slice(0, MAX_IMAGES));
       }
     } finally {
       setPickingImage(false);
@@ -114,29 +151,15 @@ export const ComposePage: React.FC = () => {
 
         {selectedImages.length === 1 && (
           <div className="mt-2 relative inline-block">
-            <img src={selectedImages[0]} className="max-h-[200px] rounded-xl object-contain" alt="" />
-            <button
-              type="button"
-              onClick={() => handleRemoveImage(0)}
-              className="absolute top-2 right-2 w-6 h-6 bg-black/60 rounded-full flex items-center justify-center text-white"
-            >
-              <IcClose size={14} />
-            </button>
+            <ResolvedImage path={selectedImages[0]} className="max-h-[200px] rounded-xl object-contain" onRemove={() => handleRemoveImage(0)} />
           </div>
         )}
 
         {selectedImages.length > 1 && (
           <div className="mt-2 grid grid-cols-2 gap-1 rounded-xl overflow-hidden">
-            {selectedImages.map((src, i) => (
+            {selectedImages.map((p, i) => (
               <div key={i} className="relative">
-                <img src={src} className="w-full aspect-square object-cover" alt="" />
-                <button
-                  type="button"
-                  onClick={() => handleRemoveImage(i)}
-                  className="absolute top-1 right-1 w-6 h-6 bg-black/60 rounded-full flex items-center justify-center text-white"
-                >
-                  <IcClose size={14} />
-                </button>
+                <ResolvedImage path={p} className="w-full aspect-square object-cover" onRemove={() => handleRemoveImage(i)} />
               </div>
             ))}
           </div>

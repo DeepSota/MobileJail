@@ -4,7 +4,7 @@ MobileGym models three different scaling concerns. They sound similar, but they 
 
 | Concern | Android analogue | Scope | Current status |
 |---|---|---|---|
-| System display size | `Settings > Display > Display size`, implemented by changing display metrics / density | Layout, text, icons, spacing | Static shell zoom via `SIMULATOR_CONFIG.display.scale`; `displaySizePct` is stored and exposed as `--os-display-scale`, but the shell does not yet consume it dynamically. |
+| System display size | `Settings > Display > Display size`, implemented by changing display metrics / density | Layout, text, icons, spacing | Runtime shell zoom combines `SIMULATOR_CONFIG.display.scale` with `displaySizePct` while preserving the physical viewport. |
 | System font size | `Settings > Display > Font size`, implemented by `fontScale` for `sp` text | Text only | Approximate: `fontSizePct` changes the root `font-size`, so rem-based text changes, but Tailwind rem-based layout also changes. This is not a strict Android `sp`/`dp` split. |
 | App design viewport | No direct Android analogue; simulator compatibility layer | Per-app layout anchor | Implemented with per-activity CSS `zoom` from `manifest.designViewportWidth`. |
 
@@ -32,16 +32,21 @@ Android apps do not declare a single "design width" and ask the OS to scale them
 
 ## MobileGym Implementation
 
-### Static System Display Scale
+### Runtime System Display Scale
 
-`SystemShell` reads `SIMULATOR_CONFIG.display.scale` and applies CSS `zoom` to the simulated OS root:
+`SystemShell` combines `SIMULATOR_CONFIG.display.scale` with the live `displaySizePct` value and applies CSS `zoom` to the simulated OS root:
 
 ```tsx
 const displayScale: number = SIMULATOR_CONFIG.display.scale ?? 1;
+const effectiveDisplayScale = displayScale * displayScaleFromPct(displaySizePct);
 
 <div
   className="relative w-full h-full"
-  style={displayScale !== 1 ? { zoom: displayScale } : undefined}
+  style={effectiveDisplayScale !== 1 ? {
+    zoom: effectiveDisplayScale,
+    width: `${100 / effectiveDisplayScale}%`,
+    height: `${100 / effectiveDisplayScale}%`,
+  } : undefined}
 >
   ...
 </div>
@@ -49,7 +54,7 @@ const displayScale: number = SIMULATOR_CONFIG.display.scale ?? 1;
 
 This is the closest simulator equivalent to Android display-size / density scaling because it affects the layout flow. A larger zoom makes the same physical viewport behave like a smaller logical viewport.
 
-Current limitation: `DisplayManager.setDisplaySizePct()` stores the setting and `DeviceEffects` publishes `--os-display-scale`, but `SystemShell` does not yet bind root zoom to that runtime setting. Settings UI and benchmark state can observe the value; the live shell does not resize from it yet.
+The inverse logical width and height keep the physical simulator viewport fixed. Apps therefore observe a smaller or larger logical viewport immediately, matching Android density changes closely enough for responsive layout testing.
 
 ### Approximate System Font Scale
 
@@ -90,7 +95,7 @@ zoom = SIMULATOR_CONFIG.framework.viewportWidth / manifest.designViewportWidth
 
 and applies that zoom around the app Activity content. For a 360px simulator viewport and a 412px app design width, the app is rendered with `zoom = 360 / 412`.
 
-`SystemShell` only injects the `zoom` style when `manifest.designViewportWidth !== framework.viewportWidth` — when the two are equal there is no wrapper zoom and the page renders at native pixel density (zero-overhead path). The same short-circuit applies to system display scale: `displayScale === 1` skips the `style={{ zoom }}` entirely.
+`SystemShell` only injects the per-App `zoom` style when `manifest.designViewportWidth !== framework.viewportWidth` — when the two are equal there is no wrapper zoom and the page renders at native pixel density (zero-overhead path). The system layer similarly skips its zoom style when the combined runtime scale is `1`.
 
 This keeps the declaration in one place and avoids each app hand-rolling its own wrapper.
 

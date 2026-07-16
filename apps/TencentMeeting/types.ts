@@ -57,8 +57,12 @@ export interface ChatMessage {
     time: number;
     to: string; // '所有人' or name
     toId?: string; // 'all' or userId
-    type?: 'text' | 'image';
+    type?: 'text' | 'image' | 'file';
     image?: string;
+    fileName?: string;
+    fileSize?: number;
+    mimeType?: string;
+    fileRef?: import('../../os/types/fileShare').FileRefV1;
 }
 
 // 进行中的会议（当前用户正在参与）

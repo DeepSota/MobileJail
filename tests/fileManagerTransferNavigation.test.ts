@@ -64,8 +64,9 @@ describe('FileManager 复制和移动目标选择导航', () => {
     const source = readFileSync('system/FileManager/pages/BrowseHomePage.tsx', 'utf8');
 
     expect(source).not.toContain(".filter(item => item.type === 'directory')");
-    expect(source).toContain('isTextPreviewableFile(item)');
-    expect(source).toContain('isPdfPreviewableFile(item)');
+    expect(source).toContain('getFileOpenTarget(item)');
+    expect(source).toContain('openFile(item)');
+    expect(source).toContain("'file.viewer.open'");
     expect(source).toContain('FileSystem.formatFileSize(item.size)');
   });
 });

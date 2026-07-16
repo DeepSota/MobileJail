@@ -3,10 +3,12 @@ import { IcCart, IcInfo, IcCamera, ICON_REGISTRY } from '../res/icons';
 import { useEbayGestures } from '../navigation';
 import TabBar from '../components/TabBar';
 import { useEbayStrings } from '../hooks/useEbayStrings';
+import { useEbayStore } from '../state';
 
 const SellPage: React.FC = () => {
   const { bindTap, bindAction } = useEbayGestures();
   const s = useEbayStrings();
+  const user = useEbayStore(state => state.user);
   const sellingSteps = [
     { id: 'step1', icon: 'IcCamera', title: s.selling_step1_title, description: s.selling_step1_desc },
     { id: 'step2', icon: 'IcTag', title: s.selling_step2_title, description: s.selling_step2_desc },
@@ -34,20 +36,27 @@ const SellPage: React.FC = () => {
            </div>
 
            {/* Auth Buttons */}
-           <div className="px-4 mb-10 flex space-x-4">
-               <button 
-                   {...bindAction('sell.auth.register')}
-                   className="flex-1 border border-blue-600 text-blue-600 rounded-full py-2.5 font-medium"
-               >
-                   {s.sell_register}
-               </button>
-               <button 
-                   {...bindAction('sell.auth.login')}
-                   className="flex-1 border border-blue-600 text-blue-600 rounded-full py-2.5 font-medium"
-               >
-                   {s.sell_login}
-               </button>
-           </div>
+           {user.isLoggedIn ? (
+             <div className="px-4 mb-10">
+               <p className="text-sm text-gray-500">{s.auth_signed_in_as}</p>
+               <p className="mt-1 text-base font-semibold text-black">{user.username}</p>
+             </div>
+           ) : (
+             <div className="px-4 mb-10 flex space-x-4">
+                 <button
+                     {...bindAction('sell.auth.register')}
+                     className="flex-1 border border-blue-600 text-blue-600 rounded-full py-2.5 font-medium"
+                 >
+                     {s.sell_register}
+                 </button>
+                 <button
+                     {...bindTap('sell.auth.login')}
+                     className="flex-1 border border-blue-600 text-blue-600 rounded-full py-2.5 font-medium"
+                 >
+                     {s.sell_login}
+                 </button>
+             </div>
+           )}
 
            {/* How it works */}
            <div className="px-4 pb-20">

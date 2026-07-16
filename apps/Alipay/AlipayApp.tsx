@@ -65,6 +65,7 @@ import { RechargeCardPage } from './pages/RechargeCardPage';
 import { SubscriptionsPage } from './pages/SubscriptionsPage';
 import { RefundPage } from './pages/RefundPage';
 import { ScanPage } from './pages/ScanPage';
+import { ShareFilePage } from './pages/ShareFilePage';
 
 
 // Icon mapping for dynamic icons from config
@@ -173,7 +174,6 @@ const Layout: React.FC = () => {
     } catch {}
 
     return () => {
-      const el = scrollRef.current;
       try {
         if (el) window.sessionStorage.setItem(key, String(el.scrollTop));
       } catch {}
@@ -262,6 +262,7 @@ export const AlipayApp: React.FC = () => {
               <Route path="contacts" element={<ContactsPage />} />
               <Route path="contacts/profile" element={<ContactProfilePage />} />
               <Route path="chat" element={<ChatPage />} />
+              <Route path="share" element={<ShareFilePage />} />
               <Route path="pay" element={<PayPage />} />
               <Route path="scan" element={<ScanPage />} />
               <Route path="pay/receive" element={<ReceivePage />} />

@@ -14,8 +14,10 @@ import { strings } from '../res/strings';
 import { stringsEn } from '../res/strings.en';
 import { useAppStrings } from '@/os/useAppStrings';
 import { useSettingsGestures } from '../hooks/useSettingsGestures';
+import { useSettingsDialog } from '../hooks/useSettingsDialog';
 export const BluetoothDevicesPage: React.FC = () => {
   const { bindTap } = useSettingsGestures();
+  const nameDialog = useSettingsDialog('bluetoothName', 'deviceName');
   const s = useAppStrings(strings, stringsEn);
   const [btEnabled, setBtEnabled] = useBooleanPreference('bluetooth_enable', true);
 
@@ -26,10 +28,13 @@ export const BluetoothDevicesPage: React.FC = () => {
   const osState = useOsStateStore.getState();
   const build = getEffectiveBuildInfo();
   const nearbyBluetooth = useMemo(
-    () => osState.hardware.nearbyBluetooth.map((device) => ({
-      ...device,
-      connected: osState.settings.global.bluetoothEnabled ? Boolean(device.connected) : false,
-    })),
+    () => {
+      void osDataRevision;
+      return osState.hardware.nearbyBluetooth.map((device) => ({
+        ...device,
+        connected: osState.settings.global.bluetoothEnabled ? Boolean(device.connected) : false,
+      }));
+    },
     [osDataRevision, osState.hardware.nearbyBluetooth, osState.settings.global.bluetoothEnabled],
   );
 
@@ -42,8 +47,6 @@ export const BluetoothDevicesPage: React.FC = () => {
       setToast((prev) => ({ ...prev, visible: false }));
     }, 1600);
   };
-
-  const [nameOpen, setNameOpen] = useState(false);
 
   const btName = osState.hardware.bluetooth.name || build.model;
 
@@ -82,14 +85,21 @@ export const BluetoothDevicesPage: React.FC = () => {
   return (
     <div className="h-full bg-app-bg flex flex-col">
       <SettingsHeader title={s.bluetooth} />
-      <div className="flex-1 overflow-y-auto no-scrollbar pb-8">
+      <div
+        className="flex-1 overflow-y-auto no-scrollbar pb-8"
+        data-scroll-container="main"
+        data-scroll-direction="vertical"
+      >
         <PreferenceCategory title={s.toggle}>
           <PreferenceItem
             title={s.bluetooth}
             summary={btEnabled ? s.on_2 : s.off_2}
             showChevron={false}
             showDivider={false}
-            onClick={() => setBtEnabled(!btEnabled)}
+            itemProps={bindTap<HTMLDivElement>(
+              { kind: 'action', id: 'settings.bluetooth.enabled.toggle' },
+              { onTrigger: () => setBtEnabled(!btEnabled) },
+            )}
           >
             <div
               className={`w-(--app-switch-track-width) h-(--app-switch-track-height) rounded-full flex items-center p-(--app-switch-track-padding) transition-colors ${
@@ -108,7 +118,7 @@ export const BluetoothDevicesPage: React.FC = () => {
             value={btName}
             showChevron={false}
             showDivider={false}
-            onClick={() => setNameOpen(true)}
+            itemProps={nameDialog.bindOpen<HTMLDivElement>()}
           >
             <IcEdit size={16} className="text-gray-300" />
           </PreferenceItem>
@@ -126,7 +136,13 @@ export const BluetoothDevicesPage: React.FC = () => {
                 value={d.connected ? s.connected : undefined}
                 showDivider={idx < paired.length - 1}
                 showChevron={false}
-                onClick={() => toggleConnect(d.mac, d.connected)}
+                itemProps={bindTap<HTMLDivElement>(
+                  { kind: 'action', id: 'settings.bluetooth.device.connect' },
+                  {
+                    params: { mac: d.mac },
+                    onTrigger: () => toggleConnect(d.mac, d.connected),
+                  },
+                )}
               >
                 <div className="flex items-center gap-2 mr-1">
                   <IcBluetooth size={16} className={d.connected ? 'text-app-primary' : 'text-gray-300'} />
@@ -148,7 +164,13 @@ export const BluetoothDevicesPage: React.FC = () => {
                 summary={d.type === 'audio' ? s.audio_device : d.type === 'watch' ? s.wearable_device : s.bluetooth_device}
                 showDivider={idx < available.length - 1}
                 showChevron={false}
-                onClick={() => pairAndConnect(d.mac)}
+                itemProps={bindTap<HTMLDivElement>(
+                  { kind: 'action', id: 'settings.bluetooth.device.connect' },
+                  {
+                    params: { mac: d.mac },
+                    onTrigger: () => pairAndConnect(d.mac),
+                  },
+                )}
               >
                 <IcBluetooth size={16} className="text-gray-300" />
               </PreferenceItem>
@@ -169,11 +191,15 @@ export const BluetoothDevicesPage: React.FC = () => {
       </div>
 
       <InputDialog
-        open={nameOpen}
+        open={nameDialog.isOpen}
         title={s.device_name}
         placeholder={s.enter_bluetooth_name}
         defaultValue={btName}
-        onClose={() => setNameOpen(false)}
+        onClose={nameDialog.close}
+        confirmAction={{
+          id: 'settings.bluetooth.name.submit',
+          params: (value) => ({ value }),
+        }}
         onConfirm={(v) => {
           const name = String(v ?? '').trim();
           if (!name) {
@@ -181,7 +207,7 @@ export const BluetoothDevicesPage: React.FC = () => {
             return;
           }
           ConnectivityManager.setDeviceName(name);
-          setNameOpen(false);
+          nameDialog.close();
           showToast(s.updated);
         }}
       />

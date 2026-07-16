@@ -1,10 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { PreferenceItem } from './PreferenceItem';
 import { InputDialog } from './InputDialog';
 import { useStringPreference } from '../state';
 import { strings } from '../res/strings';
 import { stringsEn } from '../res/strings.en';
 import { useAppStrings } from '@/os/useAppStrings';
+import { useSettingsDialog } from '../hooks/useSettingsDialog';
 
 function androidInputTypeToHtmlType(
   androidInputType: string | undefined,
@@ -45,8 +46,8 @@ export const ValuePreference: React.FC<{
   itemProps,
 }) => {
   const s = useAppStrings(strings, stringsEn);
-  const [open, setOpen] = useState(false);
   const [value, setValue] = useStringPreference(settingKey, defaultValue);
+  const dialog = useSettingsDialog('value', settingKey);
 
   const htmlInputType = useMemo(
     () => androidInputTypeToHtmlType(inputType, settingKey),
@@ -64,25 +65,22 @@ export const ValuePreference: React.FC<{
         value={displayValue || undefined}
         showChevron={!!onNavigate}
         showDivider={showDivider}
-        itemProps={itemProps}
-        onClick={() => {
-          if (onNavigate) {
-            onNavigate();
-          } else {
-            setOpen(true);
-          }
-        }}
+        itemProps={onNavigate ? itemProps : dialog.bindOpen<HTMLDivElement>()}
       />
       <InputDialog
-        open={open}
+        open={dialog.isOpen}
         title={title}
         defaultValue={value}
         placeholder={s.enter_value}
         inputType={htmlInputType}
-        onClose={() => setOpen(false)}
+        onClose={dialog.close}
+        confirmAction={{
+          id: 'settings.preference.value.submit',
+          params: (nextValue) => ({ key: settingKey, value: nextValue }),
+        }}
         onConfirm={(v) => {
           setValue(v);
-          setOpen(false);
+          dialog.close();
         }}
       />
     </>

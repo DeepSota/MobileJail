@@ -573,6 +573,10 @@ class Ebay(BaseApp):
     """
 
     @property
+    def saved_items(self) -> list[dict[str, Any]]:
+        return self.get_list("savedItems")
+
+    @property
     def recent_searches(self) -> list[dict[str, Any]]:
         return self.get_list("recentSearches")
 

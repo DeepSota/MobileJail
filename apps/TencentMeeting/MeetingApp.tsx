@@ -12,6 +12,7 @@ import { QuickMeetingPage } from './pages/QuickMeetingPage';
 import { ScheduleMeetingPage } from './pages/ScheduleMeetingPage';
 import { ScheduleRegularMeetingPage } from './pages/ScheduleRegularMeetingPage';
 import { ShareScreenPage } from './pages/ShareScreenPage';
+import { ShareFilesPage } from './pages/ShareFilesPage';
 import { MeetingPage } from './pages/MeetingPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { AccountSecurityPage } from './pages/AccountSecurityPage';
@@ -22,6 +23,7 @@ import { MessagesPage } from './pages/MessagesPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { MeetingDetailPage } from './pages/MeetingDetailPage';
 import { EditMeetingPage } from './pages/EditMeetingPage';
+import { AboutPage } from './pages/AboutPage';
 import { IcTabMeeting, IcTabContacts, IcTabMe } from './res/icons';
 import { MeetingAttendeesPage } from './pages/MeetingAttendeesPage';
 import { useAppNavigate } from './navigation';
@@ -36,6 +38,17 @@ import { colors, colorsDark } from './res/colors';
 import { colorStates, colorStatesDark } from './res/colors.states';
 import { anim } from './res/anim';
 import { dimens } from './res/dimens';
+import { useMeetingStore } from './state';
+import { IntentAvailabilityRegistry } from '../../os/IntentAvailabilityRegistry';
+
+const MeetingIntentAvailability = () => {
+    const hasActiveMeeting = useMeetingStore((state) => Boolean(state.activeMeeting));
+    useEffect(() => {
+        IntentAvailabilityRegistry.set('tencent_meeting.active_meeting', hasActiveMeeting);
+        return () => IntentAvailabilityRegistry.set('tencent_meeting.active_meeting', false);
+    }, [hasActiveMeeting]);
+    return null;
+};
 
 const MeetingNavigationHandler = () => {
     const { back } = useAppNavigate();
@@ -136,6 +149,7 @@ export const MeetingApp: React.FC = () => {
     return (
         <div className="h-full w-full" style={cssVars as React.CSSProperties}>
             <MemoryRouter>
+                <MeetingIntentAvailability />
                 <MeetingNavigationHandler />
                 <Routes>
                     <Route path="/" element={<Layout />}>
@@ -153,6 +167,7 @@ export const MeetingApp: React.FC = () => {
                         <Route path="meeting/edit" element={<EditMeetingPage />} />
                         <Route path="meeting" element={<MeetingPage />} />
                         <Route path="share" element={<ShareScreenPage />} />
+                        <Route path="share-files" element={<ShareFilesPage />} />
                         <Route path="settings" element={<SettingsPage />} />
                         <Route path="account-security" element={<AccountSecurityPage />} />
                         <Route path="history" element={<HistoryMeetingsPage />} />
@@ -160,6 +175,7 @@ export const MeetingApp: React.FC = () => {
                         <Route path="attendees/:id" element={<MeetingAttendeesPage />} />
                         <Route path="personal-room" element={<PersonalRoomPage />} />
                         <Route path="profile" element={<ProfilePage />} />
+                        <Route path="about" element={<AboutPage />} />
 
                         {/* Messages (tab state via query params) */}
                         <Route path="messages" element={<MessagesPage />} />

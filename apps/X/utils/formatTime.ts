@@ -122,13 +122,11 @@ export function compareXPostsByRecencyDesc(a: XPostTemporalLike, b: XPostTempora
   if (aMs !== null && bMs !== null) {
     const delta = bMs - aMs;
     if (delta !== 0) return delta;
-  } else if (aMs !== null && bMs === null) {
-    // a 有精确时间戳 (例如刚发表的新帖), b 没有 (例如无 createdAt 的转发壳) — a 更新。
-    return -1;
-  } else if (aMs === null && bMs !== null) {
-    return 1;
   }
 
+  // 当只有一侧有绝对时间时，不能假定它一定更新：另一侧的相对时间
+  // （例如 5h）仍可能明显晚于一个较旧的 createdAt。先统一成 minutes-ago
+  // 比较；只有落在同一分钟时，才让精确时间戳参与下面的 tie-break。
   const aMinutes = getXPostRecencyMinutes(a);
   const bMinutes = getXPostRecencyMinutes(b);
   if (aMinutes !== null && bMinutes !== null) {

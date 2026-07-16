@@ -16,6 +16,13 @@ import * as TimeService from './TimeService';
 let pickCallback: ((result: MediaPickerResult) => void) | null = null;
 let currentPickerOptions: MediaPickerOptions = {};
 
+const APP_PRIVATE_DATA_ROOT = '/data/data/';
+
+/** App-private attachments are available only through an explicit FileRef grant. */
+export function isPublicMediaPath(path: string): boolean {
+  return !String(path).startsWith(APP_PRIVATE_DATA_ROOT);
+}
+
 // ============================================================================
 // Album Management
 // ============================================================================
@@ -25,6 +32,7 @@ let currentPickerOptions: MediaPickerOptions = {};
  */
 export function getAlbums(): Album[] {
   const allMedia = FileSystem.getMediaFiles()
+    .filter(f => isPublicMediaPath(f.path))
     .filter(f => f.mimeType?.startsWith('image/') || f.mimeType?.startsWith('video/'));
   
   return ALBUM_DEFINITIONS.map(def => {
@@ -90,7 +98,9 @@ export function getMediaItems(options?: {
   }
   
   // Gallery only deals with visual media — always exclude audio
-  files = files.filter(f => f.mimeType?.startsWith('image/') || f.mimeType?.startsWith('video/'));
+  files = files
+    .filter(f => isPublicMediaPath(f.path))
+    .filter(f => f.mimeType?.startsWith('image/') || f.mimeType?.startsWith('video/'));
 
   // Filter by type if specified
   if (options?.type && options.type !== 'all') {
@@ -107,6 +117,7 @@ export function getMediaItems(options?: {
 export function getMediaItem(path: string): MediaItem | null {
   const node = FileSystem.getNode(path);
   if (!node || node.type !== 'file') return null;
+  if (!isPublicMediaPath(node.path)) return null;
   if (!node.mimeType?.startsWith('image/') && !node.mimeType?.startsWith('video/')) {
     return null;
   }
@@ -218,7 +229,15 @@ export async function saveToGallery(
   const timeStr = `${String(date.getHours()).padStart(2, '0')}${String(date.getMinutes()).padStart(2, '0')}${String(date.getSeconds()).padStart(2, '0')}`;
   
   const mimeType = options?.mimeType || (content instanceof Blob ? content.type : 'image/jpeg');
-  const ext = mimeType.includes('png') ? 'png' : mimeType.includes('gif') ? 'gif' : 'jpg';
+  const ext = mimeType.includes('png')
+    ? 'png'
+    : mimeType.includes('gif')
+      ? 'gif'
+      : mimeType.includes('webp')
+        ? 'webp'
+        : mimeType.includes('jpeg') || mimeType.includes('jpg')
+          ? 'jpg'
+          : 'jpg';
   const fileName = options?.fileName || `IMG_${dateStr}_${timeStr}.${ext}`;
   
   // Determine path based on album

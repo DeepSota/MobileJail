@@ -1,4 +1,5 @@
 import React from 'react';
+import * as FileSystem from '../../../os/FileSystemService';
 import { useXStrings } from '../hooks/useXStrings';
 
 type XImageProps = {
@@ -16,14 +17,31 @@ const getProxiedUrl = (url?: string | null) => {
   return url;
 };
 
+/** Resolve a file-system path to a displayable URI (handles IndexedDB files). */
+function useResolvedUri(path: string | null): string | null {
+  const [uri, setUri] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (!path) { setUri(null); return; }
+    const syncUri = FileSystem.getFileUri(path);
+    if (syncUri) { setUri(syncUri); return; }
+    let cancelled = false;
+    FileSystem.getFileUriAsync(path).then(u => {
+      if (!cancelled) setUri(u);
+    });
+    return () => { cancelled = true; };
+  }, [path]);
+  return uri;
+}
+
 export function XImage({ src, alt, className }: XImageProps) {
   const [hasError, setHasError] = React.useState(false);
   const [useProxy, setUseProxy] = React.useState(false);
   const [attemptedFallback, setAttemptedFallback] = React.useState(false);
   const s = useXStrings();
 
-  const displaySrc = useProxy ? getProxiedUrl(src) : src;
-  const referrerPolicy = src?.includes('twimg.com') && !useProxy ? 'no-referrer' : undefined;
+  const resolvedSrc = useResolvedUri(src ?? null);
+  const displaySrc = useProxy ? getProxiedUrl(resolvedSrc) : resolvedSrc;
+  const referrerPolicy = resolvedSrc?.includes('twimg.com') && !useProxy ? 'no-referrer' : undefined;
 
   React.useEffect(() => {
     setHasError(false);

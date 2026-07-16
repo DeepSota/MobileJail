@@ -319,3 +319,16 @@ class FileManager(BaseApp):
     def clipboard_operation(self) -> str | None:
         value = self.get("clipboardOperation")
         return str(value) if value is not None else None
+
+    @property
+    def file_system(self) -> "FileSystem":
+        """Get a FileSystem accessor for the file_manager's embedded state."""
+        fs_state = self._state.get("fileSystem") or self._state
+        init_fs = (self._init_state or {}).get("fileSystem") if self._init_state else None
+        if init_fs is None and self._init_state:
+            init_fs = self._init_state
+        return FileSystem(fs_state, init=init_fs)
+
+    def check_path_exists(self, path: str, *, field: str) -> dict[str, Any]:
+        """Check if a path exists in the file manager's file system."""
+        return self.file_system.check_path_exists(path, field=field)

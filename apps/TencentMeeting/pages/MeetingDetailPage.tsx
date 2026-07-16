@@ -1,6 +1,6 @@
 import { useTencentMeetingStrings } from '../hooks/useTencentMeetingStrings';
 import React from 'react';
-import { useNavigate as useRouterNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { IcNavForward, IcExternalLink, IcMore, IcCopy, IcQrCode, IcInfo } from '../res/icons';
 import { useMeetingGestures } from '../hooks/useMeetingGestures';
 import * as TimeService from '../../../os/TimeService';
@@ -16,7 +16,6 @@ const formatTime = (timestamp: number): string => {
 export const MeetingDetailPage: React.FC = () => {
     const { bindTap } = useMeetingGestures();
     const { go, back } = useAppNavigate();
-    const routerNavigate = useRouterNavigate();
     const user = useMeetingStore(s => s.user);
     const currentScheduledMeeting = useMeetingStore(s => s.currentScheduledMeeting);
     const cancelScheduledMeeting = useMeetingStore(s => s.cancelScheduledMeeting);
@@ -25,8 +24,7 @@ export const MeetingDetailPage: React.FC = () => {
     const showActions = searchParams.get('dialog') === 'actions';
 
     const handleEditMeeting = () => {
-        // Replace dialog entry with edit page (back from edit returns to detail page)
-        routerNavigate('/meeting/edit', { replace: true });
+        go('meeting.detail.edit.open');
     };
 
     const handleCancelMeeting = () => {

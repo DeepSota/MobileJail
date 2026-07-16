@@ -21,6 +21,7 @@ import { CallsPage } from './pages/CallsPage';
 import { ContactsPage } from './pages/ContactsPage';
 import { BusinessHallPage } from './pages/BusinessHallPage';
 import { NewContactPage } from './pages/NewContactPage';
+import { EditContactPage } from './pages/EditContactPage';
 import { SearchPage } from './pages/SearchPage';
 import { ContactDetailPage } from './pages/ContactDetailPage';
 import { CallDetailPage } from './pages/CallDetailPage';
@@ -91,6 +92,7 @@ const ContactsChrome: React.FC = () => {
         <Route path="/call/:callLogId" element={<CallDetailPage />} />
         <Route path="/incall/:number" element={<InCallPage />} />
         <Route path="/contacts/new" element={<NewContactPage />} />
+        <Route path="/contact/:contactId/edit" element={<EditContactPage />} />
         <Route path="/settings/calls" element={<PhoneSettingsHomePage />} />
         <Route path="/settings/contacts" element={<PhoneSettingsHomePage />} />
         <Route path="/settings/page/:pageId" element={<PhonePreferenceScreenPage />} />

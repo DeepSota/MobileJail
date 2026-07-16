@@ -4,12 +4,13 @@ import { SettingsIcon } from './SettingsIcon';
 import { PreferenceItem } from './PreferenceItem';
 import { Toast } from '@/os/components/Toast';
 import { SETTINGS_PAGE_OVERRIDES } from '../data/settingsOverrides';
-import { useBooleanPreference, useStringPreference, useSettingsStore, selectWifiConnectedSsid, selectPagesData, selectPagesLoading, selectPagesError } from '../state';
+import { useBooleanPreference, useStringPreference, useSettingsStore, useWifiConnectedSsid, selectPagesData, selectPagesLoading, selectPagesError } from '../state';
 import { CollapsingToolbar, CollapsingLargeTitle, TOOLBAR_SPACER_HEIGHT } from '../../../os/components/CollapsingToolbar';
 import { useSettingsStrings } from '../res/useSettingsStrings';
 import { ChevronRightIcon } from '../res/icons';
 import { useSettingsGestures } from '../hooks/useSettingsGestures';
 import { useLocale } from '../../../os/locale';
+import { resolveSettingsPageId } from '../data/settingsMappings';
 /** Mock dynamic summaries for certain items */
 const DYNAMIC_SUMMARY_KEYS: Record<string, string> = {
   mi_account_settings: 'mi_account_settings_summary',
@@ -61,7 +62,7 @@ export const SettingsMainPage: React.FC = () => {
   const mainSections = data?.mainSections ?? null;
   const pages = data?.pages ?? null;
   const [wifiEnabled] = useBooleanPreference('wifi_enable', true);
-  const connectedSsid = useSettingsStore(selectWifiConnectedSsid);
+  const connectedSsid = useWifiConnectedSsid();
   const [bluetoothEnabled] = useBooleanPreference('bluetooth_enable', true);
   const [storedAccountName] = useStringPreference('branded_account', '');
   const accountName = React.useMemo(() => {
@@ -134,7 +135,8 @@ export const SettingsMainPage: React.FC = () => {
   }, []);
 
   const getTargetPageId = React.useCallback(
-    (itemId: string, targetPage?: string) => PAGE_OVERRIDES[itemId] || targetPage || itemId,
+    (itemId: string, targetPage?: string) =>
+      resolveSettingsPageId(PAGE_OVERRIDES[itemId] || targetPage || itemId),
     [],
   );
 
@@ -183,6 +185,8 @@ export const SettingsMainPage: React.FC = () => {
       <div
         ref={scrollRef}
         className="flex-1 min-h-0 overflow-y-auto no-scrollbar"
+        data-scroll-container="main"
+        data-scroll-direction="vertical"
         onScroll={handleScroll}
       >
         {/* ★ Collapse wrapper — sticky 父容器边界约束 */}

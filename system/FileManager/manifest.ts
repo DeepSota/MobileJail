@@ -32,18 +32,14 @@ export const manifest: AppManifest = {
     PERMISSIONS.WRITE_EXTERNAL_STORAGE,
   ],
   intentFilters: [
-    {
-      action: 'ACTION_VIEW',
-      scheme: 'file',
-      route: '/',
-      description: '打开文件链接',
-    },
-    {
-      action: 'ACTION_VIEW',
-      scheme: 'content',
-      route: '/',
-      description: '打开 content URI',
-    },
+    { action: 'ACTION_VIEW', type: 'application/pdf', route: '/viewer' },
+    { action: 'ACTION_VIEW', type: 'text/plain', route: '/viewer' },
+    { action: 'ACTION_VIEW', type: 'application/msword', route: '/viewer' },
+    { action: 'ACTION_VIEW', type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', route: '/viewer' },
+    { action: 'ACTION_VIEW', type: 'application/vnd.ms-excel', route: '/viewer' },
+    { action: 'ACTION_VIEW', type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', route: '/viewer' },
+    { action: 'ACTION_VIEW', type: 'application/vnd.ms-powerpoint', route: '/viewer' },
+    { action: 'ACTION_VIEW', type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', route: '/viewer' },
     {
       action: 'ACTION_VIEW',
       type: 'inode/directory',
@@ -53,7 +49,9 @@ export const manifest: AppManifest = {
   ],
   queries: [
     { action: 'ACTION_VIEW', type: 'image/*' },
+    { action: 'ACTION_SEND', type: '*/*' },
     { action: 'ACTION_SEND', type: 'image/*' },
     { action: 'ACTION_SEND', type: 'application/*' },
+    { action: 'ACTION_SEND_MULTIPLE', type: '*/*' },
   ],
 };

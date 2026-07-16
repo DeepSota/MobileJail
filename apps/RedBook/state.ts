@@ -24,6 +24,8 @@ import type {
   RedBookStorage,
   User,
 } from './types';
+import type { FileRefV1 } from '@/os/types/fileShare';
+import { resolveUnknownRedBookUserName } from './utils/stateStrings';
 
 export type {
   ChatConversation,
@@ -68,6 +70,7 @@ export interface RedBookActions {
   addNote: (note: Pick<Note, 'title' | 'content' | 'images'>) => void;
   sendMessage: (toUserId: string, content: string) => void;
   sendImageMessage: (toUserId: string, imageUri: string) => void;
+  sendSharedFiles: (toUserId: string, files: FileRefV1[]) => boolean;
   sendNoteMessage: (toUserId: string, noteId: string) => void;
   logout: () => void;
   updateUser: (updates: RedBookUserUpdates) => void;
@@ -249,7 +252,8 @@ export const useRedBookStore = createAppStoreWithActions<RedBookStoreState, RedB
         type: 'text',
       };
       if (chatIndex === -1) {
-        const targetUser = resolveRedBookRuntimeUser(s.users, baseUsersById(), s.user, toUserId) || { name: 'User ' + toUserId, avatar: '' };
+        const targetUser = resolveRedBookRuntimeUser(s.users, baseUsersById(), s.user, toUserId)
+          || { name: resolveUnknownRedBookUserName(toUserId, s.settings.language), avatar: '' };
         chats.unshift({
           userId: toUserId,
           username: targetUser.name,
@@ -284,7 +288,8 @@ export const useRedBookStore = createAppStoreWithActions<RedBookStoreState, RedB
         image: imageUri,
       };
       if (chatIndex === -1) {
-        const targetUser = resolveRedBookRuntimeUser(s.users, baseUsersById(), s.user, toUserId) || { name: 'User ' + toUserId, avatar: '' };
+        const targetUser = resolveRedBookRuntimeUser(s.users, baseUsersById(), s.user, toUserId)
+          || { name: resolveUnknownRedBookUserName(toUserId, s.settings.language), avatar: '' };
         chats.unshift({
           userId: toUserId,
           username: targetUser.name,
@@ -303,6 +308,50 @@ export const useRedBookStore = createAppStoreWithActions<RedBookStoreState, RedB
         chats.unshift(chat);
       }
       set({ chats });
+    },
+
+    sendSharedFiles: (toUserId, files) => {
+      if (files.length === 0 || toUserId === get().user.id) return false;
+      const s = get();
+      const chats = [...s.chats];
+      const chatIndex = chats.findIndex((chat) => chat.userId === toUserId);
+      const targetUser = resolveRedBookRuntimeUser(s.users, baseUsersById(), s.user, toUserId);
+      const isFollowing = getRedBookFollowingIds(s.user).includes(toUserId);
+      // A new DM may only be created for a still-followed, real user. Existing
+      // chats remain eligible, but a stale selected id must never create a
+      // fallback/ghost conversation after the file copy finishes.
+      if (chatIndex === -1 && (!isFollowing || !targetUser)) return false;
+
+      const baseTs = TimeService.now();
+      const messages: ChatMessage[] = files.map((file, index) => ({
+        id: `msg_${baseTs}_${index}_${file.fileId}`,
+        senderId: s.user.id,
+        content: file.name,
+        timestamp: baseTs + index,
+        type: file.mimeType.startsWith('image/') ? 'image' : 'file',
+        fileRef: file,
+      }));
+      const lastMessage = files[files.length - 1].name;
+      if (chatIndex === -1) {
+        chats.unshift({
+          userId: toUserId,
+          username: targetUser!.name,
+          avatar: targetUser!.avatar,
+          unreadCount: 0,
+          lastMessage,
+          lastTime: baseTs + files.length - 1,
+          messages,
+        });
+      } else {
+        const chat = { ...chats[chatIndex] };
+        chat.messages = [...chat.messages, ...messages];
+        chat.lastMessage = lastMessage;
+        chat.lastTime = baseTs + files.length - 1;
+        chats.splice(chatIndex, 1);
+        chats.unshift(chat);
+      }
+      set({ chats });
+      return true;
     },
 
     sendNoteMessage: (toUserId, noteId) => {
@@ -345,7 +394,8 @@ export const useRedBookStore = createAppStoreWithActions<RedBookStoreState, RedB
       };
       const lastMsg = `[笔记] ${note.title}`;
       if (chatIndex === -1) {
-        const targetUser = resolveRedBookRuntimeUser(s.users, baseUsersById(), s.user, toUserId) || { name: 'User ' + toUserId, avatar: '' };
+        const targetUser = resolveRedBookRuntimeUser(s.users, baseUsersById(), s.user, toUserId)
+          || { name: resolveUnknownRedBookUserName(toUserId, s.settings.language), avatar: '' };
         chats.unshift({
           userId: toUserId,
           username: targetUser.name,

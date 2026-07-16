@@ -125,6 +125,13 @@ export interface AppIntentFilter {
   /** 接收此 intent 时导航到的路由路径（如 '/receive-share'） */
   route: string;
   /**
+   * ACTION_SEND capability. This separates a text body from a text/plain file
+   * attachment without weakening MIME matching to application/octet-stream.
+   */
+  shareKind?: 'text' | 'files' | 'both';
+  /** Volatile OS capability gate, e.g. an active meeting receiver. */
+  availabilityKey?: string;
+  /**
    * 启动模式（对应 Android `<activity android:launchMode>`）。
    * - `standard`（默认）：进入调用方 Task 或新 Task（取决于 caller flags），完成后回到调用方。
    * - `singleTask`：始终进入接收方自己的 Task；若该 Task 已存在，则**清空其上层 Activity 并重置 root 历史**到本 route，

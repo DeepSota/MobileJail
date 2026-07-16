@@ -25,8 +25,7 @@ import { RecentPage } from './pages/RecentPage';
 import { CloudPage } from './pages/CloudPage';
 import { FolderPage } from './pages/FolderPage';
 import { CategoryPage } from './pages/CategoryPage';
-import { TextPreviewPage } from './pages/TextPreviewPage';
-import { PdfPreviewPage } from './pages/PdfPreviewPage';
+import { ViewerPage } from './pages/ViewerPage';
 
 export const FileManagerApp: React.FC = () => {
   const { isDark } = useDarkMode();
@@ -54,8 +53,7 @@ export const FileManagerApp: React.FC = () => {
 
           {/* Folder browser */}
           <Route path="/folder" element={<FolderPage />} />
-          <Route path="/text" element={<TextPreviewPage />} />
-          <Route path="/pdf" element={<PdfPreviewPage />} />
+          <Route path="/viewer" element={<ViewerPage />} />
 
           {/* Category views */}
           <Route path="/category/:category" element={<CategoryPage />} />

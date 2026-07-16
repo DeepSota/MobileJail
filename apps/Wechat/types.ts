@@ -118,6 +118,8 @@ export interface Message {
   fileName?: string;
   fileSize?: number;
   mimeType?: string;
+  /** Stable App-owned attachment created after the user confirms sharing. */
+  fileRef?: import('../../os/types/fileShare').FileRefV1;
   transferId?: string;
   linkCover?: string;
   linkTitle?: string;

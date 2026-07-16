@@ -13,7 +13,11 @@ export const LauncherSettingsPage: React.FC = () => {
   return (
     <div className="h-full bg-app-bg flex flex-col">
       <SettingsHeader title={s.home_screen} />
-      <div className="flex-1 overflow-y-auto no-scrollbar pb-8">
+      <div
+        className="flex-1 overflow-y-auto no-scrollbar pb-8"
+        data-scroll-container="main"
+        data-scroll-direction="vertical"
+      >
         <PreferenceCategory title={s.layout}>
           <ListPreference
             title={s.home_screen_layout}
@@ -91,4 +95,3 @@ export const LauncherSettingsPage: React.FC = () => {
 };
 
 export default LauncherSettingsPage;
-

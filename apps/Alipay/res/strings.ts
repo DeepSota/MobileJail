@@ -919,6 +919,18 @@ export const strings = {
   voice_floating_ball_description: '开启语音快捷悬浮球，你可以在支付宝端的任何页面，通过语音唤醒服务，先人一步快速打开服务。',
   bank_rate_news: '多家银行继续下调存款利率，市场进入"1时代"',
   follow_finance_friends: '关注理财"盘"友，查看实盘更新',
+  file_share_title: '发送给朋友',
+  file_share_subtitle: '选择支付宝联系人或最近会话',
+  file_share_confirm: '发送',
+  file_share_sending: '正在发送…',
+  file_share_selected: '已选择',
+  file_share_empty: '暂无可发送的联系人',
+  file_share_missing: '文件已不可用',
+  file_share_error: '发送失败，请重试',
+  file_share_recipient_unavailable: '该联系人已不可用，文件未发送',
+  file_attachment_unavailable: '文件已不存在或无法打开',
+  file_attachment_open: '打开附件',
+  chat_unknown_contact: '未知联系人',
 } as const;
 
 export type StringKey = keyof typeof strings;

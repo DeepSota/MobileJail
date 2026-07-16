@@ -49,6 +49,9 @@ import { ActivityContext } from './ActivityContext';
 import { KeyboardService } from './keyboard/KeyboardService';
 import { TaskManager } from './TaskManager';
 import type { AppId, OSState } from './types';
+import { useOsStateStore } from './OsStateStore';
+import { displayScaleFromPct } from './managers/DisplayManager';
+import { CLIPBOARD_ACCESS_EVENT } from './ClipboardService';
 
 const computeActivityContainerStyle = (args: {
   isRecentsVisible: boolean;
@@ -119,6 +122,42 @@ recentsTopPadding +
 const noopSubscribe = () => () => {};
 const getZeroSnapshot = () => 0;
 const getKeyboardHeightSnapshot = () => KeyboardService.getState().height;
+
+const ClipboardAccessToast: React.FC = () => {
+  const t = useOsT();
+  const [appId, setAppId] = useState<string | null>(null);
+  const hideTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const handleAccess = (event: Event) => {
+      const detail = (event as CustomEvent<{ appId?: string }>).detail;
+      const nextAppId = String(detail?.appId ?? '').trim();
+      if (!nextAppId) return;
+      setAppId(nextAppId);
+      if (hideTimerRef.current !== null) window.clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = window.setTimeout(() => {
+        setAppId(null);
+        hideTimerRef.current = null;
+      }, 2_000);
+    };
+    window.addEventListener(CLIPBOARD_ACCESS_EVENT, handleAccess);
+    return () => {
+      window.removeEventListener(CLIPBOARD_ACCESS_EVENT, handleAccess);
+      if (hideTimerRef.current !== null) window.clearTimeout(hideTimerRef.current);
+    };
+  }, []);
+
+  if (!appId) return null;
+  return (
+    <div
+      role="status"
+      className="pointer-events-none fixed bottom-20 left-1/2 max-w-[84%] -translate-x-1/2 rounded-full bg-black/80 px-4 py-2 text-center text-[13px] text-white shadow-lg"
+      style={{ zIndex: 5300 }}
+    >
+      {t('{app}读取了剪贴板').replace('{app}', getLocalizedAppName(appId))}
+    </div>
+  );
+};
 
 function syncSwipeToActivityContainer(
   topActivityId: string,
@@ -1432,6 +1471,8 @@ export const SystemShell: React.FC = () => {
   }, [activeTopActivityId, state.isLauncherVisible, state.isRecentsVisible]);
 
   const displayScale: number = SIMULATOR_CONFIG.display.scale ?? 1;
+  const displaySizePct = useOsStateStore((osState) => osState.settings.system.displaySizePct);
+  const effectiveDisplayScale = displayScale * displayScaleFromPct(displaySizePct);
   const viewportWidth: number = fwViewportWidth ?? 360;
 
   return (
@@ -1454,7 +1495,11 @@ export const SystemShell: React.FC = () => {
       >
         <div
           className="relative w-full h-full"
-          style={displayScale !== 1 ? { zoom: displayScale } : undefined}
+          style={effectiveDisplayScale !== 1 ? {
+            zoom: effectiveDisplayScale,
+            width: `${100 / effectiveDisplayScale}%`,
+            height: `${100 / effectiveDisplayScale}%`,
+          } : undefined}
         >
         <DeviceEffects />
         <SystemErrorBoundary componentName="StatusBar">
@@ -1535,6 +1580,7 @@ export const SystemShell: React.FC = () => {
           onChoose={chooseIntentActivity}
           onCancel={cancelIntentChooser}
         />
+        <ClipboardAccessToast />
         <SystemErrorBoundary componentName="KeyboardOverlay">
           <KeyboardOverlay />
         </SystemErrorBoundary>

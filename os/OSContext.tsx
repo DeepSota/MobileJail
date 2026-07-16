@@ -10,6 +10,7 @@ import { clearFileSystemDB, initFileSystem } from './FileSystemService';
 import * as MediaService from './MediaService';
 import { KeyboardService } from './keyboard/KeyboardService';
 import { ClipboardService } from './ClipboardService';
+import { SensorPrivacyService } from './SensorPrivacyService';
 import { NotificationService } from './NotificationService';
 import { PermissionService } from './PermissionService';
 import { QuickSettingsService } from './QuickSettingsService';
@@ -571,6 +572,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
       notifications: NotificationService,
       permissions: PermissionService,
       clipboard: ClipboardService,
+      sensors: SensorPrivacyService,
       statusBar: StatusBarService,
       keyboard: KeyboardService,
       quickSettings: QuickSettingsService,

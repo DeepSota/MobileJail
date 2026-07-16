@@ -109,6 +109,16 @@ export const NAVIGATION_DECLARATION = {
       queryParams: {},
       description: '新建联系人',
     },
+    {
+      path: '/contact/:contactId/edit',
+      component: 'EditContactPage',
+      params: { contactId: 'string' },
+      entryPoint: 'none',
+      scrollContainers: MAIN_SCROLL,
+      uiStates: [{ id: 'contactEdit.base', search: {}, description: '编辑联系人' }],
+      queryParams: {},
+      description: '编辑联系人',
+    },
 
     // =========================
     // Settings (from decompiled preference_*.xml)
@@ -259,6 +269,17 @@ export const NAVIGATION_DECLARATION = {
       params: { contactId: 'string' },
       label: '打开联系人详情',
       ui: { placement: 'content', icon: 'contact', gesture: 'tap' },
+    },
+    {
+      id: 'contact.edit',
+      from: '/contact/:contactId',
+      to: '/contact/:contactId/edit',
+      search: {},
+      searchParams: {},
+      mode: 'push',
+      params: { contactId: 'string' },
+      label: '编辑联系人',
+      ui: { placement: 'topbar', icon: 'edit', gesture: 'tap' },
     },
     {
       id: 'call.open',

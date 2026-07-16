@@ -27,6 +27,7 @@ import {
 } from '../utils/localize';
 import * as TimeService from '../../../os/TimeService';
 import TabBar from '../components/TabBar';
+import { useEbayStore } from '../state';
 
 // ── Currency helpers ────────────────────────────────────────
 
@@ -104,6 +105,7 @@ const ItemDetailPage: React.FC = () => {
   const locale = useLocale();
   const isEn = locale === 'en';
   const numberLocale = isEn ? 'en-US' : 'zh-CN';
+  const store = useEbayStore();
 
   const [allProducts, setAllProducts] = useState<ProductItem[]>(getProductsSync() ?? []);
   useEffect(() => {
@@ -116,6 +118,8 @@ const ItemDetailPage: React.FC = () => {
   );
 
   const [selectedThumbIndex, setSelectedThumbIndex] = useState(0);
+  const savedItems = useEbayStore(state => state.savedItems) ?? [];
+  const isSaved = product ? savedItems.some((si: any) => si.id === product.id) : false;
 
   if (!product) {
     return (
@@ -212,7 +216,7 @@ const ItemDetailPage: React.FC = () => {
           />
           <div className="absolute bottom-3 right-3 bg-white/90 rounded-full px-3 py-1.5 flex items-center space-x-1 shadow-sm">
             <span className="text-sm font-medium text-black">{watcherCount}</span>
-            <IcHeart size={18} className="text-black" />
+            <IcHeart size={18} className={isSaved ? "text-red-500 fill-red-500" : "text-black"} />
           </div>
         </div>
 
@@ -327,9 +331,14 @@ const ItemDetailPage: React.FC = () => {
               {s.item_make_offer}
             </button>
           )}
-          <button className="w-full h-12 border-2 border-gray-300 text-black font-medium text-base rounded-full flex items-center justify-center space-x-2">
-            <IcHeart size={18} className="text-black" />
-            <span>{s.item_add_to_watchlist}</span>
+          <button
+            onClick={() => store.toggleSaveItem(product)}
+            className={`w-full h-12 border-2 font-medium text-base rounded-full flex items-center justify-center space-x-2 ${
+              isSaved ? 'border-red-400 text-red-500' : 'border-gray-300 text-black'
+            }`}
+          >
+            <IcHeart size={18} className={isSaved ? 'text-red-500 fill-red-500' : 'text-black'} />
+            <span>{isSaved ? (isEn ? 'Saved' : '已收藏') : s.item_add_to_watchlist}</span>
           </button>
         </div>
 

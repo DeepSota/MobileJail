@@ -113,6 +113,9 @@ class RunnerConfig:
     # Loop detection
     loop_detect: int = 0  # 连续相同action次数阈值，0=禁用
 
+    # Episode wall-clock timeout (0=disable)
+    episode_timeout: float = 180.0
+
     # Parallel
     parallel: int = 1
     processes: int = 1
@@ -264,6 +267,7 @@ class RunnerConfig:
             screenshot_scale=get("screenshot_scale", 0.3),
 
             loop_detect=get("loop_detect", 0),
+            episode_timeout=get("episode_timeout", 0.0),
             
             parallel=get("parallel", 1) or 1,
             processes=get("processes", 1) or 1,

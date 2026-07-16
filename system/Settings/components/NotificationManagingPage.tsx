@@ -87,7 +87,11 @@ export const NotificationManagingPage: React.FC = () => {
   return (
     <div className="h-full bg-app-bg flex flex-col">
       <SettingsHeader title={s.notification_management} />
-      <div className="flex-1 overflow-y-auto no-scrollbar pb-8">
+      <div
+        className="flex-1 overflow-y-auto no-scrollbar pb-8"
+        data-scroll-container="main"
+        data-scroll-direction="vertical"
+      >
         <PreferenceCategory title={s.app_notifications}>
           {apps.map((app, idx) => {
             const enabled = getBoolPref(prefs, prefKey(app.id, 'enabled'), true);

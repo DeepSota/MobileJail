@@ -8,12 +8,10 @@ import { useMailGestures } from '../hooks/useMailGestures';
 import { useAppStrings } from '@/os/useAppStrings';
 import { strings } from '../res/strings';
 import { stringsEn } from '../res/strings.en';
-import { useNavigate } from 'react-router-dom';
 
 export const FoldersPage: React.FC = () => {
   const s = useAppStrings(strings, stringsEn);
   const { go, bindBack } = useMailGestures();
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const current = (searchParams.get('folder') as FolderId | null) ?? DEFAULT_FOLDER;
   const providerState = useMailProviderState();
@@ -35,13 +33,7 @@ export const FoldersPage: React.FC = () => {
   }, [providerState]);
 
   const handlePick = (folder: FolderId) => {
-    // Replace current entry with the folder list at '/'.  We use navigate directly because
-    // the transition `folder.switch` is `mode: 'replace'` and we want the same behaviour from
-    // the folders page itself — landing back on '/' with the new folder.
     go('folder.switch', { folder });
-    // After the in-memory go() above (which navigates via MemoryRouter replace), the back
-    // gesture will return to '/' rather than '/folders'.  This mirrors Android popUpTo.
-    void navigate;
   };
 
   return (
@@ -74,9 +66,9 @@ export const FoldersPage: React.FC = () => {
               type="button"
               onClick={() => handlePick(f.id)}
               className={`w-full flex items-center gap-3 px-4 py-3.5 active:bg-gray-50 border-b border-gray-100 ${isCurrent ? 'bg-app-primary/5' : ''}`}
-              data-action="folder.switch"
-              data-action-type="tap"
-              data-action-params={JSON.stringify({ folder: f.id })}
+              data-trigger="folder.switch"
+              data-trigger-type="tap"
+              data-trigger-params={JSON.stringify({ folder: f.id })}
             >
               <div className="w-9 h-9 rounded-lg bg-app-primary/10 flex items-center justify-center">
                 {Icon && <Icon size={20} className="text-app-primary" />}

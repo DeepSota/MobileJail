@@ -1,5 +1,6 @@
 import type { FSNode } from '@/os/types';
 import * as FileSystem from '@/os/FileSystemService';
+import * as FileShareService from '@/os/FileShareService';
 
 export type TransferOperation = 'copy' | 'move';
 
@@ -36,22 +37,7 @@ export async function transferNodesToDirectory(
  * 时会留在自己 Task）。FileManager 不需要回执，与真机分享行为一致。
  */
 export function shareNodesAsImages(nodes: FSNode[]): boolean {
-  const imagePaths = nodes
-    .filter((n) => n.type === 'file' && n.mimeType?.startsWith('image/'))
-    .map((n) => n.path);
-  if (imagePaths.length === 0) return false;
-  window.__OS__?.startActivity?.(
-    {
-      action: 'ACTION_SEND',
-      type: 'image/*',
-      data: {
-        stream: imagePaths.length === 1 ? imagePaths[0] : imagePaths,
-        mimeType: 'image/jpeg',
-      },
-    },
-    { newTask: true },
-  );
-  return true;
+  return shareNodes(nodes.filter((node) => node.type === 'file' && node.mimeType?.startsWith('image/')));
 }
 
 /**
@@ -59,22 +45,24 @@ export function shareNodesAsImages(nodes: FSNode[]): boolean {
  * non-image file was found and the intent was dispatched.
  */
 export function shareNodesAsFiles(nodes: FSNode[]): boolean {
-  const filePaths = nodes
-    .filter((n) => n.type === 'file' && !n.mimeType?.startsWith('image/'))
-    .map((n) => n.path);
-  if (filePaths.length === 0) return false;
-  window.__OS__?.startActivity?.(
-    {
-      action: 'ACTION_SEND',
-      type: 'application/*',
-      data: {
-        stream: filePaths.length === 1 ? filePaths[0] : filePaths,
-        mimeType: 'application/octet-stream',
-      },
-    },
+  return shareNodes(nodes.filter((node) => node.type === 'file' && !node.mimeType?.startsWith('image/')));
+}
+
+/** Share images and documents together through stable content:// references. */
+export function shareNodes(nodes: FSNode[]): boolean {
+  const files = nodes.filter((node) => node.type === 'file');
+  if (files.length === 0) return false;
+  let payload;
+  try {
+    payload = FileShareService.createPayload(files);
+  } catch (error) {
+    console.error('[FileManager] Unable to build share payload:', error);
+    return false;
+  }
+  return window.__OS__?.startActivity?.(
+    FileShareService.createSendIntent(payload),
     { newTask: true },
-  );
-  return true;
+  ) ?? false;
 }
 
 async function copyNodeToPath(node: FSNode, destPath: string): Promise<boolean> {

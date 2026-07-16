@@ -16,6 +16,8 @@ Usage (multi-worker, production):
     uvicorn scripts.server.api_gateway:app --host 127.0.0.1 --port 4181 --workers 8
 """
 
+from __future__ import annotations
+
 import argparse
 import asyncio
 import json
@@ -30,9 +32,25 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
+try:
+    from scripts.server.office_preview import (
+        MAX_SOURCE_BYTES,
+        OfficePreviewService,
+        PreviewError,
+        normalize_extension,
+    )
+except ModuleNotFoundError:  # direct: python scripts/server/api_gateway.py
+    from office_preview import (  # type: ignore[no-redef]
+        MAX_SOURCE_BYTES,
+        OfficePreviewService,
+        PreviewError,
+        normalize_extension,
+    )
+
 # ── Per-worker HTTP client (created lazily) ───────────────────────────────
 
 _client: httpx.AsyncClient | None = None
+_office_preview = OfficePreviewService()
 
 
 async def get_client() -> httpx.AsyncClient:
@@ -306,6 +324,62 @@ async def handle_proxy(request: Request) -> Response:
     )
 
 
+# ── Handler: POST /api/preview/office ────────────────────────────────────
+
+def _preview_error_response(error: PreviewError) -> JSONResponse:
+    return JSONResponse(
+        error.payload(),
+        status_code=error.status,
+        headers={
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+async def handle_office_preview(request: Request) -> Response:
+    """Convert a raw Office document body to a validated, cached PDF preview."""
+    try:
+        if request.method != "POST":
+            raise PreviewError("METHOD_NOT_ALLOWED")
+
+        extension = normalize_extension(request.headers.get("x-file-extension"))
+        content_length = request.headers.get("content-length")
+        if content_length:
+            try:
+                declared_length = int(content_length)
+            except ValueError:
+                declared_length = 0
+            if declared_length > MAX_SOURCE_BYTES:
+                raise PreviewError("FILE_TOO_LARGE")
+
+        body = bytearray()
+        async for chunk in request.stream():
+            body.extend(chunk)
+            if len(body) > MAX_SOURCE_BYTES:
+                raise PreviewError("FILE_TOO_LARGE")
+
+        result = await _office_preview.preview(bytes(body), extension)
+        return Response(
+            result.pdf,
+            status_code=200,
+            media_type="application/pdf",
+            headers={
+                "Cache-Control": "private, max-age=86400",
+                "Content-Disposition": 'inline; filename="preview.pdf"',
+                "ETag": f'"{result.etag}"',
+                "X-Content-Type-Options": "nosniff",
+                "X-Preview-Cache": result.cache_status,
+                "X-Preview-Converter": result.converter,
+            },
+        )
+    except PreviewError as error:
+        return _preview_error_response(error)
+    except Exception as error:
+        print(f"[preview/office] unexpected error: {type(error).__name__}: {error}")
+        return _preview_error_response(PreviewError("INTERNAL_ERROR"))
+
+
 # ── App Setup ─────────────────────────────────────────────────────────────
 
 async def on_shutdown():
@@ -313,12 +387,18 @@ async def on_shutdown():
     if _client and not _client.is_closed:
         await _client.aclose()
     _client = None
+    await _office_preview.shutdown()
 
 
 app = Starlette(
     routes=[
         Route("/api/gw/fetch", handle_fetch, methods=["POST"]),
         Route("/api/gw/proxy", handle_proxy, methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]),
+        Route(
+            "/api/preview/office",
+            handle_office_preview,
+            methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+        ),
     ],
     on_shutdown=[on_shutdown],
 )

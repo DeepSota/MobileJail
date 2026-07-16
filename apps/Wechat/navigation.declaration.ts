@@ -99,6 +99,12 @@ export const NAVIGATION_DECLARATION = {
               label: '收款',
               behavior: 'other',
             },
+            {
+              id: 'chat.attachment.open',
+              label: '打开聊天附件',
+              behavior: 'other',
+              paramsSchema: { id: 'string' },
+            },
           ],
         },
         {
@@ -1687,29 +1693,38 @@ export const NAVIGATION_DECLARATION = {
         {
           id: 'share.forward.base',
           search: {},
-          description: '接收外部分享 — 选择聊天 / 创建聊天 / 确认发送',
+          description: '接收外部分享 — 选择聊天',
           actions: [
-            // Main view (选择聊天)
-            { id: 'share.forward.close', label: '关闭分享页（取消转发）', behavior: 'close' },
             { id: 'share.forward.search.input', label: '搜索最近聊天', behavior: 'modify' },
-            { id: 'share.forward.recentForward.select', label: '点选最近转发头像', behavior: 'open' },
-            { id: 'share.forward.target.select', label: '点选最近聊天行', behavior: 'open' },
-            { id: 'share.forward.createChat', label: '进入「创建聊天」页', behavior: 'open' },
-
-            // Create chat view (创建聊天 — 完成按钮当前禁用：暂不支持创建群聊)
-            { id: 'share.create.back', label: '返回选择聊天页', behavior: 'close' },
+          ],
+        },
+        {
+          id: 'share.forward.create',
+          search: { view: 'create' },
+          description: '创建聊天联系人选择页',
+          actions: [
             { id: 'share.create.search.input', label: '搜索联系人', behavior: 'modify' },
-            { id: 'share.create.contact.toggle', label: '勾选/取消联系人（不可提交）', behavior: 'modify' },
-
-            // Confirm bottom sheet (发送给)
+            {
+              id: 'share.create.contact.toggle',
+              label: '勾选/取消联系人（不可提交）',
+              behavior: 'modify',
+              scope: 'item',
+              paramsSchema: { wxid: 'string' },
+            },
+          ],
+        },
+        {
+          id: 'share.forward.confirm',
+          search: { dialog: 'confirm' },
+          description: '确认发送底部弹层',
+          actions: [
             { id: 'share.confirm.caption.input', label: '输入附言', behavior: 'modify' },
-            { id: 'share.confirm.cancel', label: '取消（关闭确认浮层）', behavior: 'close' },
-            { id: 'share.confirm.send', label: '发送（提交转发并关闭分享页）', behavior: 'modify' },
+            { id: 'share.confirm.send', label: '发送（提交转发并关闭分享页）', behavior: 'submit' },
           ],
         },
       ],
       queryParams: {},
-      description: '接收图片分享 — 选择聊天后转发图片',
+      description: '接收图片或文件分享 — 选择聊天后确认发送',
     },
 
     // =========================
@@ -2154,6 +2169,39 @@ export const NAVIGATION_DECLARATION = {
     // =========================
     // Contacts / chats
     // =========================
+    {
+      id: 'share.forward.recentForward.select',
+      from: { path: '/share/forward', search: { view: null, dialog: null } },
+      to: '/share/forward',
+      search: { dialog: 'confirm' },
+      searchParams: {},
+      mode: 'push',
+      params: { wxid: 'string' },
+      label: '选择最近转发联系人并打开发送确认',
+      ui: { placement: 'content', icon: 'share_target', gesture: 'tap' },
+    },
+    {
+      id: 'share.forward.target.select',
+      from: { path: '/share/forward', search: { view: null, dialog: null } },
+      to: '/share/forward',
+      search: { dialog: 'confirm' },
+      searchParams: {},
+      mode: 'push',
+      params: { wxid: 'string' },
+      label: '选择聊天联系人并打开发送确认',
+      ui: { placement: 'content', icon: 'share_target', gesture: 'tap' },
+    },
+    {
+      id: 'share.forward.createChat',
+      from: { path: '/share/forward', search: { view: null, dialog: null } },
+      to: '/share/forward',
+      search: { view: 'create' },
+      searchParams: {},
+      mode: 'push',
+      params: {},
+      label: '打开创建聊天联系人选择页',
+      ui: { placement: 'content', icon: 'create_chat', gesture: 'tap' },
+    },
     {
       id: 'share.forward.send.toChat',
       from: ['/share/forward'],
@@ -3660,4 +3708,3 @@ export const NAVIGATION_DECLARATION = {
 } as const satisfies NavigationDeclaration;
 
 export type TransitionId = typeof NAVIGATION_DECLARATION.transitions[number]['id'];
-

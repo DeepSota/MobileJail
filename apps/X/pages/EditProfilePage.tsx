@@ -84,8 +84,10 @@ export const EditProfilePage: React.FC = () => {
         <button
           className={`font-bold text-sm px-3 py-1 rounded-full ${hasChanges ? 'bg-app-text text-app-bg' : 'bg-gray-200 text-gray-400'}`}
           disabled={!hasChanges}
-          {...(hasChanges ? bindTap('profile.edit.save') : {})}
-          onClick={hasChanges ? handleSave : undefined}
+          {...(hasChanges ? bindTap(
+            { kind: 'action', id: 'profile.edit.save' },
+            { onTrigger: handleSave },
+          ) : {})}
         >
           {s.profile_edit_save}
         </button>
@@ -95,8 +97,10 @@ export const EditProfilePage: React.FC = () => {
         {/* Banner */}
         <div
           className="h-32 bg-gray-200 relative cursor-pointer active:opacity-80"
-          {...bindTap('profile.edit.banner.pick')}
-          onClick={handlePickBanner}
+          {...bindTap(
+            { kind: 'action', id: 'profile.edit.banner.pick' },
+            { onTrigger: () => { void handlePickBanner(); } },
+          )}
         >
           {banner ? <XImage src={banner} alt="Banner" className="w-full h-full object-cover" /> : null}
           <div className="absolute inset-0 flex items-center justify-center bg-black/20">
@@ -108,8 +112,10 @@ export const EditProfilePage: React.FC = () => {
         <div className="px-4 relative -mt-8 mb-4">
           <div
             className="w-16 h-16 rounded-full bg-app-bg border-4 border-app-bg overflow-hidden relative cursor-pointer active:opacity-80"
-            {...bindTap('profile.edit.avatar.pick')}
-            onClick={handlePickAvatar}
+            {...bindTap(
+              { kind: 'action', id: 'profile.edit.avatar.pick' },
+              { onTrigger: () => { void handlePickAvatar(); } },
+            )}
           >
             {avatar ? (
               <XImage src={avatar} alt={name} className="w-full h-full object-cover" />

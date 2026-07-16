@@ -47,21 +47,25 @@ export const NewContactPage: React.FC = () => {
         : [],
       starred: false,
     });
+  };
 
+  // Save + back (✓ button)
+  const handleSave = () => {
+    save();
     back(1);
   };
 
   return (
-    <div className="h-full w-full bg-app-bg">
+    <div className="h-full w-full bg-app-bg flex flex-col">
       <Toast visible={toast.visible} message={toast.message} />
 
-      <div className="sticky top-0 z-30 bg-app-bg">
+      <div className="flex-shrink-0 z-30 bg-app-bg">
         <div className="h-10" />
         <div className="px-4 h-12 flex items-center justify-between">
           <button
             type="button"
             aria-label={isEnglish ? 'Back' : '返回'}
-            {...bindBack<HTMLButtonElement>({ stopPropagation: true })}
+            onClick={() => back(1)}
             className="w-10 h-10 rounded-full flex items-center justify-center active:bg-black/5"
           >
             <SymbolIcon name={IcSymbolClose} size={22} className="text-app-text" />
@@ -75,7 +79,8 @@ export const NewContactPage: React.FC = () => {
           <button
             type="button"
             aria-label={isEnglish ? 'Save contact' : '保存联系人'}
-            onClick={save}
+            onClick={handleSave}
+            data-keep-keyboard
             className="w-10 h-10 rounded-full flex items-center justify-center active:bg-black/5"
           >
             <SymbolIcon name={IcSymbolOk} size={22} className="text-app-text" />
@@ -84,7 +89,7 @@ export const NewContactPage: React.FC = () => {
       </div>
 
       <div
-        className="h-[calc(100%-88px)] overflow-y-auto no-scrollbar pb-10"
+        className="flex-1 overflow-y-auto no-scrollbar pb-10"
         data-scroll-container="main"
         data-scroll-direction="vertical"
       >

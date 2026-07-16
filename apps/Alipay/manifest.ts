@@ -51,6 +51,38 @@ export const manifest: AppManifest = {
       ],
       description: '支付宝退款 — 接收外部退款请求',
     },
+    {
+      action: 'ACTION_SEND',
+      type: 'image/*',
+      route: '/share',
+      shareKind: 'files',
+      description: '发送图片给支付宝联系人',
+    },
+    {
+      action: 'ACTION_SEND',
+      type: 'application/*',
+      route: '/share',
+      shareKind: 'files',
+      description: '发送文档给支付宝联系人',
+    },
+    {
+      action: 'ACTION_SEND',
+      type: '*/*',
+      route: '/share',
+      shareKind: 'files',
+      description: '发送任意单个文件给支付宝联系人',
+    },
+    {
+      action: 'ACTION_SEND_MULTIPLE',
+      type: '*/*',
+      route: '/share',
+      shareKind: 'files',
+      description: '发送多个图片或文件给支付宝联系人',
+    },
+  ],
+  queries: [
+    { action: 'ACTION_SEND', type: 'image/*' },
+    { action: 'ACTION_SEND', type: 'application/*' },
+    { action: 'ACTION_VIEW', type: '*/*' },
   ],
 };
-

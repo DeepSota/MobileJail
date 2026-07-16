@@ -1,5 +1,5 @@
 import { useRedBookStrings } from '../hooks/useRedBookStrings';
-import React, { useMemo, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import { useRedBookStore } from '../state';
 import { useRedBookView } from '../data/view';
@@ -8,16 +8,35 @@ import { REDBOOK_CONFIG } from '../data';
 import { IcNavBack, IcShare, IcMore, IcMessageCircle, IcStar, IcHeart, IcSend, IcQuote, IcFrown, IcReply, IcAt, IcSmile, IcImage, IcFilter, IcCheck, IcClose } from '../res/icons';
 const ChevronLeft = IcNavBack, Share2 = IcShare, MoreHorizontal = IcMore, MessageCircle = IcMessageCircle, Star = IcStar, Heart = IcHeart, Send = IcSend, Quote = IcQuote, Frown = IcFrown, Reply = IcReply, AtSign = IcAt, Smile = IcSmile, ImageIcon = IcImage, ListFilter = IcFilter, Check = IcCheck;
 import * as MediaService from '@/os/MediaService';
+import * as FileSystem from '../../../os/FileSystemService';
 import { ShareModal } from '../components/ShareModal';
 import { formatPostTime, formatCommentTime } from '../utils/dateUtils';
 import { useRedBookGestures } from '../hooks/useRedBookGestures';
 import { UserPagePreview } from './UserPage';
+
+/** Resolve a file-system path to a displayable URI (handles IndexedDB files). */
+function useResolvedUri(path: string | null): string | null {
+  const [uri, setUri] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (!path) { setUri(null); return; }
+    const syncUri = FileSystem.getFileUri(path);
+    if (syncUri) { setUri(syncUri); return; }
+    let cancelled = false;
+    FileSystem.getFileUriAsync(path).then(u => {
+      if (!cancelled) setUri(u);
+    });
+    return () => { cancelled = true; };
+  }, [path]);
+  return uri;
+}
+
 export const DetailPage: React.FC = () => {
   const s = useRedBookStrings();
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
   const isShareOpen = searchParams.get('modal') === 'share';
+  const isCommentOpen = searchParams.get('modal') === 'comment';
   const { bindTap, bindBack, back, go } = useRedBookGestures();
   const { user, toggleLike, toggleCollect, followUser, addComment, toggleCommentLike, addToHistory } = useRedBookStore(useShallow(s => ({
     user: s.user,
@@ -101,8 +120,23 @@ export const DetailPage: React.FC = () => {
   const [replyToUsername, setReplyToUsername] = useState<string | undefined>(undefined);
   const [sortOrder, setSortOrder] = useState<'default' | 'latest' | 'hot'>('default');
   const [showSortMenu, setShowSortMenu] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const commentImageUri = useResolvedUri(commentImage);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const commentSectionRef = useRef<HTMLDivElement>(null);
+
+  // Live value from DOM that picks up external TYPE (VLM agents, __SIM_INPUT__)
+  // which may set input.value directly without going through React's onChange.
+  const [domInputValue, setDomInputValue] = useState('');
+  const hasContent = commentInput.trim() || commentImage || domInputValue.trim();
+
+  // Auto-focus textarea when comment sheet opens
+  useEffect(() => {
+    if (isCommentOpen) {
+      // Small delay to let the sheet animation start before focusing
+      const t = setTimeout(() => inputRef.current?.focus(), 150);
+      return () => clearTimeout(t);
+    }
+  }, [isCommentOpen]);
 
   const swiperPointerState = useRef<{ startX: number; currentX: number; pointerId: number } | null>(null);
 
@@ -227,6 +261,19 @@ export const DetailPage: React.FC = () => {
       swiperPointerState.current = null;
   };
 
+  const handlePickCommentImage = useCallback(async () => {
+      if (pickingImage) return;
+      setPickingImage(true);
+      try {
+          const result = await MediaService.pickMedia({ type: 'image', multiple: false, maxSelect: 1 });
+          if (!result.cancelled && result.selected.length > 0) {
+              setCommentImage(result.selected[0].path || null);
+          }
+      } finally {
+          setPickingImage(false);
+      }
+  }, [pickingImage]);
+
   if (!note) {
     return <div className="h-full w-full flex items-center justify-center">{s.note_not_found}</div>;
   }
@@ -242,38 +289,32 @@ export const DetailPage: React.FC = () => {
   };
 
   const handleSendComment = () => {
-      if (!commentInput.trim() && !commentImage) return;
-      addComment(note.id, commentInput, replyToCommentId, commentImage || undefined);
+      // Read from both React state and DOM to handle external TYPE actions
+      // (e.g. VLM agents via __SIM_INPUT__) that set input.value directly
+      // without going through React's onChange → setState flow.
+      const currentValue = commentInput || domInputValue || inputRef.current?.value || '';
+      if (!currentValue.trim() && !commentImage) return;
+      addComment(note.id, currentValue, replyToCommentId, commentImage || undefined);
       setCommentInput('');
+      setDomInputValue('');
+      if (inputRef.current) { inputRef.current.value = ''; inputRef.current.style.height = 'auto'; }
       setCommentImage(null);
       setReplyToCommentId(undefined);
       setReplyToUsername(undefined);
-      // 提交后主动让输入失焦：移动端会据此收起键盘
-      inputRef.current?.blur();
+      // Close the comment sheet after sending
+      if (isCommentOpen) back();
+      else inputRef.current?.blur();
   };
-
-  const handlePickCommentImage = useCallback(async () => {
-      if (pickingImage) return;
-      setPickingImage(true);
-      try {
-          const result = await MediaService.pickMedia({ type: 'image', multiple: false, maxSelect: 1 });
-          if (!result.cancelled && result.selected.length > 0) {
-              setCommentImage(result.selected[0].uri);
-          }
-      } finally {
-          setPickingImage(false);
-      }
-  }, [pickingImage]);
-
-  const scrollToComments = useCallback(() => {
-      commentSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, []);
 
   const handleReply = (commentId: string, username: string) => {
       setReplyToCommentId(commentId);
       setReplyToUsername(username);
       setCommentInput('');
-      inputRef.current?.focus();
+      if (!isCommentOpen) {
+        go('note.comment.open', { params: { id: note.id } });
+      } else {
+        inputRef.current?.focus();
+      }
   };
 
   return (
@@ -515,20 +556,10 @@ export const DetailPage: React.FC = () => {
                         <img src={user.avatar} className="w-full h-full object-cover" />
                     </div>
                     <div
-                        className="flex-1 h-[36px] bg-[#f5f5f5] rounded-full px-4 flex items-center justify-between cursor-pointer active:bg-gray-200 transition-colors"
-                        onClick={() => inputRef.current?.focus()}
+                        className="flex-1 h-[36px] bg-[#f5f5f5] rounded-full px-4 flex items-center cursor-pointer active:bg-gray-200 transition-colors"
+                        {...bindTap('note.comment.open', { params: { id: note.id } })}
                     >
                         <span className="text-app-text-muted text-[13px]">{s.share_your_thoughts}</span>
-                        <div className="flex items-center gap-3 text-[#666]">
-                             <AtSign size={18} strokeWidth={1.5} />
-                             <Smile size={18} strokeWidth={1.5} />
-                             <span
-                                 onClick={(e) => { e.stopPropagation(); handlePickCommentImage(); }}
-                                 className="cursor-pointer"
-                             >
-                                 <ImageIcon size={34} strokeWidth={1.5} />
-                             </span>
-                        </div>
                     </div>
                 </div>
 
@@ -691,108 +722,149 @@ export const DetailPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Bottom Action Bar - flex-shrink-0 for adjustResize (keyboard) compatibility */}
-      <div className="flex-shrink-0 bg-app-surface border-t border-gray-100 z-50 pb-[20px]" data-keep-keyboard="true">
-        {/* Reply Indicator */}
-        {replyToUsername && (
-            <div className="flex items-center justify-between px-4 py-2 bg-gray-50 text-xs text-gray-500 border-b border-gray-100">
-                <span>{s.replying}: <span className="text-app-text font-medium">{replyToUsername}</span></span>
-                <span
-                    className="text-app-text-muted cursor-pointer px-2"
-                    {...bindTap({ kind: 'action', id: 'note.comment.reply.cancel' }, { onTrigger: () => { setReplyToCommentId(undefined); setReplyToUsername(undefined); } })}
-                >
-                    {s.cancel}
-                </span>
-            </div>
-        )}
-
-        <div className="h-(--app-detail-bottom-bar-height) px-4 flex items-center justify-between">
-            {/* Image preview */}
-            {commentImage && (
-              <div className="absolute bottom-16 left-4 right-4 flex items-start gap-2 bg-app-surface pb-2 z-10">
-                <div className="relative">
-                  <img src={commentImage} alt="" className="max-h-[60px] rounded-lg object-cover" />
-                  <button
-                    type="button"
-                    onClick={() => setCommentImage(null)}
-                    className="absolute -top-1 -right-1 w-4 h-4 bg-gray-800/70 rounded-full flex items-center justify-center text-white"
-                  >
-                    <IcClose size={10} />
-                  </button>
+      {/* Bottom Action Bar — collapsed: input pill on left, icons on right | expanded: comment sheet */}
+      {!isCommentOpen ? (
+        <div className="flex-shrink-0 bg-app-surface border-t border-gray-100 z-50 pb-[20px]">
+          <div className="px-4 py-3 flex items-center gap-3">
+              {/* Left: comment input trigger pill */}
+              <div
+                className="flex-1 h-[36px] bg-[#f5f5f5] rounded-full px-4 flex items-center justify-between cursor-pointer active:bg-gray-200 transition-colors"
+                {...bindTap('note.comment.open', { params: { id: note.id } })}
+              >
+                <span className="text-app-text-muted text-[13px]">{s.share_your_thoughts}</span>
+                <div className="flex items-center gap-2 text-[#999]">
+                  <AtSign size={16} strokeWidth={1.5} />
+                  <Smile size={16} strokeWidth={1.5} />
+                  <ImageIcon size={16} strokeWidth={1.5} />
                 </div>
               </div>
-            )}
-            {/* Input Placeholder */}
-            <div className="flex-1 h-(--app-detail-bottom-bar-input-height) bg-gray-100 rounded-full px-4 flex items-center mr-2 focus-within:ring-1 ring-red-100 transition-all">
-                <input
-                    ref={inputRef}
-                    type="text"
-                    placeholder={replyToUsername ? `${s.reply} ${replyToUsername}...` : s.say_something}
-                    className="bg-transparent w-full text-[15px] text-gray-900 placeholder-gray-400 focus:outline-none"
-                    value={commentInput}
-                    onChange={e => setCommentInput(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleSendComment()}
-                />
-            </div>
 
-            {/* Image pick button (always visible) */}
-            <button
-                type="button"
-                className="text-gray-400 active:text-gray-600 mr-2 flex-shrink-0"
-                {...bindTap({ kind: 'action', id: 'note.comment.image.pick' }, { onTrigger: handlePickCommentImage })}
-            >
-                <ImageIcon size={34} strokeWidth={1.5} />
-            </button>
-
-            {/* Actions */}
-            {(commentInput.trim() || commentImage) ? (
-                <button
-                    {...bindTap(
-                      { kind: 'action', id: 'note.comment.submit' },
-                      { params: { value: commentInput.trim(), replyToCommentId: replyToCommentId ?? '' }, onTrigger: handleSendComment },
-                    )}
-                    className="text-app-primary font-medium text-sm px-2"
+              {/* Right: like / collect / comment count */}
+              <div className="flex items-center gap-5 shrink-0">
+                <div
+                  className="flex flex-col items-center gap-0.5"
+                  {...bindTap(
+                    { kind: 'action', id: 'note.item.like.toggle' },
+                    { params: { noteId: note.id, to: !isLiked }, onTrigger: () => toggleLike(note.id) },
+                  )}
                 >
-                    {s.detailpage_send}
-                </button>
-            ) : (
-                <div className="flex items-center gap-6">
-                    <div
-                      className="flex flex-col items-center gap-0.5"
-                      {...bindTap(
-                        { kind: 'action', id: 'note.item.like.toggle' },
-                        { params: { noteId: note.id, to: !isLiked }, onTrigger: () => toggleLike(note.id) },
-                      )}
-                    >
-                        <Heart
-                          size={28}
-                          className={`transition-transform active:scale-125 ${isLiked ? 'text-app-primary' : ''}`}
-                          fill={isLiked ? 'currentColor' : 'none'}
-                          stroke={isLiked ? 'currentColor' : '#333'}
-                          strokeWidth={1.5}
-                        />
-                        <span className="text-[11px] text-gray-500 font-medium">{note.likes}</span>
-                    </div>
-                    <div
-                      className="flex flex-col items-center gap-0.5"
-                      {...bindTap(
-                        { kind: 'action', id: 'note.item.collect.toggle' },
-                        { params: { noteId: note.id, to: !isCollected }, onTrigger: () => toggleCollect(note.id) },
-                      )}
-                    >
-                        <Star size={28} fill={isCollected ? '#f6c444' : 'none'} stroke={isCollected ? '#f6c444' : '#333'} strokeWidth={1.5} className="transition-transform active:scale-125" />
-                        <span className="text-[11px] text-gray-500 font-medium">{note.collections}</span>
-                    </div>
-                    <div className="flex flex-col items-center gap-0.5 cursor-pointer active:opacity-70"
-                        onClick={scrollToComments}
-                    >
-                        <MessageCircle size={28} stroke="#333" strokeWidth={1.5} />
-                        <span className="text-[11px] text-gray-500 font-medium">{note.comments}</span>
-                    </div>
+                    <Heart
+                      size={24}
+                      className={`transition-transform active:scale-125 ${isLiked ? 'text-app-primary' : ''}`}
+                      fill={isLiked ? 'currentColor' : 'none'}
+                      stroke={isLiked ? 'currentColor' : '#333'}
+                      strokeWidth={1.5}
+                    />
+                    <span className="text-[10px] text-gray-500 font-medium">{note.likes}</span>
                 </div>
-            )}
+                <div
+                  className="flex flex-col items-center gap-0.5"
+                  {...bindTap(
+                    { kind: 'action', id: 'note.item.collect.toggle' },
+                    { params: { noteId: note.id, to: !isCollected }, onTrigger: () => toggleCollect(note.id) },
+                  )}
+                >
+                    <Star size={24} fill={isCollected ? '#f6c444' : 'none'} stroke={isCollected ? '#f6c444' : '#333'} strokeWidth={1.5} className="transition-transform active:scale-125" />
+                    <span className="text-[10px] text-gray-500 font-medium">{note.collections}</span>
+                </div>
+                <div
+                  className="flex flex-col items-center gap-0.5 cursor-pointer active:opacity-70"
+                  {...bindTap('note.comment.open', { params: { id: note.id } })}
+                >
+                    <MessageCircle size={24} stroke="#333" strokeWidth={1.5} />
+                    <span className="text-[10px] text-gray-500 font-medium">{note.comments}</span>
+                </div>
+              </div>
+          </div>
         </div>
-      </div>
+      ) : (
+        /* Expanded comment sheet — part of normal flex flow so adjustResize pushes it above keyboard */
+        <div className="flex-shrink-0 bg-app-surface border-t border-gray-100 z-50" data-keep-keyboard="true">
+          {/* Reply Indicator */}
+          {replyToUsername && (
+            <div className="flex items-center justify-between px-4 py-2 bg-gray-50 text-xs text-gray-500 border-b border-gray-100">
+              <span>{s.replying}: <span className="text-app-text font-medium">{replyToUsername}</span></span>
+              <span
+                className="text-app-text-muted cursor-pointer px-2"
+                {...bindTap({ kind: 'action', id: 'note.comment.reply.cancel' }, { onTrigger: () => { setReplyToCommentId(undefined); setReplyToUsername(undefined); } })}
+              >
+                {s.cancel}
+              </span>
+            </div>
+          )}
+
+          {/* Image preview */}
+          {commentImageUri && (
+            <div className="px-4 pt-3 flex items-start gap-2">
+              <div className="relative">
+                <img src={commentImageUri} alt="" className="max-h-[80px] rounded-lg object-cover" />
+                <button
+                  type="button"
+                  onClick={() => setCommentImage(null)}
+                  className="absolute -top-1 -right-1 w-4 h-4 bg-gray-800/70 rounded-full flex items-center justify-center text-white"
+                >
+                  <IcClose size={10} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Input row: textarea + send button */}
+          <div className="px-4 py-3 flex items-end gap-2">
+            <div className="flex-1 bg-gray-100 rounded-xl px-4 py-2 focus-within:ring-1 ring-red-100 transition-all max-h-[120px] overflow-y-auto">
+              <textarea
+                ref={inputRef}
+                placeholder={replyToUsername ? `${s.reply} ${replyToUsername}...` : s.say_something}
+                className="bg-transparent w-full text-[15px] text-gray-900 placeholder-gray-400 focus:outline-none resize-none leading-[20px]"
+                rows={1}
+                value={commentInput}
+                onChange={e => {
+                  setCommentInput(e.target.value);
+                  setDomInputValue(e.target.value);
+                  e.target.style.height = 'auto';
+                  e.target.style.height = e.target.scrollHeight + 'px';
+                }}
+                onInput={() => {
+                  const v = inputRef.current?.value ?? '';
+                  setDomInputValue(v);
+                  if (v !== commentInput) setCommentInput(v);
+                  const el = inputRef.current;
+                  if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
+                }}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendComment(); } }}
+              />
+            </div>
+            {hasContent && (
+              <button
+                {...bindTap(
+                  { kind: 'action', id: 'note.comment.submit' },
+                  { params: { value: (commentInput || domInputValue).trim(), replyToCommentId: replyToCommentId ?? '' }, onTrigger: handleSendComment },
+                )}
+                className="text-app-primary font-medium text-sm px-4 py-2 min-w-[60px] text-center active:bg-red-50 rounded-md flex-shrink-0"
+              >
+                {s.detailpage_send}
+              </button>
+            )}
+          </div>
+
+          {/* Toolbar: @, emoji, image — sits above the keyboard */}
+          <div className="px-4 pb-4 pt-1 flex items-center gap-6 text-[#666] border-t border-gray-50">
+            <button type="button" className="active:opacity-50">
+              <AtSign size={22} strokeWidth={1.5} />
+            </button>
+            <button type="button" className="active:opacity-50">
+              <Smile size={22} strokeWidth={1.5} />
+            </button>
+            <button
+              type="button"
+              className="active:opacity-50"
+              {...bindTap({ kind: 'action', id: 'note.comment.image.pick' }, { onTrigger: handlePickCommentImage })}
+            >
+              <ImageIcon size={22} strokeWidth={1.5} />
+            </button>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );

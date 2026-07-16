@@ -37,13 +37,36 @@ export const manifest: AppManifest = {
       action: 'ACTION_SEND',
       type: 'text/plain',
       route: '/new',
+      shareKind: 'text',
       description: '接收文本分享',
     },
     {
       action: 'ACTION_SEND',
       type: 'image/*',
       route: '/new',
+      shareKind: 'files',
       description: '接收图片分享',
+    },
+    {
+      action: 'ACTION_SEND',
+      type: 'application/*',
+      route: '/new',
+      shareKind: 'files',
+      description: '接收文件分享',
+    },
+    {
+      action: 'ACTION_SEND',
+      type: '*/*',
+      route: '/new',
+      shareKind: 'files',
+      description: '接收任意单个文件',
+    },
+    {
+      action: 'ACTION_SEND_MULTIPLE',
+      type: '*/*',
+      route: '/new',
+      shareKind: 'files',
+      description: '接收多个图片或文件',
     },
     {
       action: 'ACTION_VIEW',
@@ -55,5 +78,6 @@ export const manifest: AppManifest = {
   queries: [
     { action: 'ACTION_PICK', type: 'vnd.android.cursor.dir/contact' },
     { action: 'ACTION_VIEW', scheme: 'tel' },
+    { action: 'ACTION_VIEW', type: '*/*' },
   ],
 };

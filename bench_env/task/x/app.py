@@ -424,9 +424,10 @@ class X(BaseApp):
         actual = ""
         matched = False
         for post in self.new_posts_vs_init():
-            text = str(post.get("content") or "")
-            if all(keyword in text for keyword in keywords):
-                actual = text
+            text = str(post.get("content") or "").replace(" ", "")
+            norm_keywords = [kw.replace(" ", "") for kw in keywords]
+            if all(keyword in text for keyword in norm_keywords):
+                actual = str(post.get("content") or "")
                 matched = True
                 break
         return {
@@ -434,6 +435,53 @@ class X(BaseApp):
             "expected": f"new X post with {list(keywords)}",
             "actual": actual or "(none)",
             "passed": matched,
+        }
+
+    def check_new_post_contains_with_image(
+        self,
+        *keywords: str,
+        image_filename: str = "",
+        field: str = "x_post_with_image",
+    ) -> dict[str, Any]:
+        """Check that a new post contains all *keywords* AND has an image
+        whose path includes *image_filename*.
+
+        ``post.images`` stores file-system paths (e.g.
+        ``/sdcard/DCIM/Camera/代码评审.jpg``), so checking whether the
+        filename is a substring of any image path is sufficient.
+        """
+        actual = ""
+        matched_post = None
+        for post in self.new_posts_vs_init():
+            text = str(post.get("content") or "").replace(" ", "")
+            norm_keywords = [kw.replace(" ", "") for kw in keywords]
+            if not all(keyword in text for keyword in norm_keywords):
+                continue
+            image_filename_norm = image_filename.replace(" ", "")
+            images: list[str] = post.get("images") or []
+            if image_filename and not any(
+                image_filename_norm in str(img).replace(" ", "")
+                for img in images
+            ):
+                continue
+            actual = str(post.get("content") or "")
+            matched_post = post
+            break
+        image_actual = ""
+        if matched_post:
+            imgs = matched_post.get("images") or []
+            image_actual = imgs[0] if imgs else "(no images)"
+        return {
+            "field": field,
+            "expected": {
+                "keywords": list(keywords),
+                "image_filename": image_filename or "(any)",
+            },
+            "actual": {
+                "content": actual or "(none)",
+                "images": (matched_post.get("images") or []) if matched_post else [],
+            },
+            "passed": matched_post is not None,
         }
 
     def check_created_quoted_post(

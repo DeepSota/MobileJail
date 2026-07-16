@@ -71,6 +71,12 @@ export const stringsEn: Partial<Record<StringKey, string>> = {
   contact_deleted_toast: 'Deleted',
   contact_delete_btn: 'Delete contact',
 
+  // EditContactPage
+  edit_contact_title: 'Edit contact',
+  edit_contact_add_phone: 'Add phone',
+  edit_contact_add_email: 'Add email',
+  edit_contact_add_notes: 'Add notes',
+
   // CallDetailPage
   call_detail_title: 'Call detail',
   call_log_not_found: 'Record does not exist',

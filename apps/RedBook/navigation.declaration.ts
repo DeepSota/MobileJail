@@ -144,6 +144,24 @@ export const NAVIGATION_DECLARATION = {
               paramsSchema: { userId: 'string', to: 'boolean' },
             },
             {
+              id: 'note.comment.item.like.toggle',
+              label: '切换评论点赞',
+              behavior: 'toggle',
+              scope: 'item',
+              paramsSchema: { commentId: 'string', to: 'boolean' },
+            },
+            { id: 'note.comment.sortMenu.toggle', label: '切换评论排序菜单', behavior: 'toggle', paramsSchema: { to: 'boolean' } },
+            { id: 'note.comment.sort.select.default', label: '评论排序-默认', behavior: 'select' },
+            { id: 'note.comment.sort.select.latest', label: '评论排序-最新', behavior: 'select' },
+            { id: 'note.comment.sort.select.hot', label: '评论排序-最多点赞', behavior: 'select' },
+          ],
+        },
+        {
+          id: 'noteDetail.modal.comment',
+          search: { modal: 'comment' },
+          description: '笔记详情-评论输入面板',
+          actions: [
+            {
               id: 'note.comment.submit',
               label: '发送评论',
               behavior: 'submit',
@@ -155,13 +173,6 @@ export const NAVIGATION_DECLARATION = {
               behavior: 'other',
             },
             {
-              id: 'note.comment.item.like.toggle',
-              label: '切换评论点赞',
-              behavior: 'toggle',
-              scope: 'item',
-              paramsSchema: { commentId: 'string', to: 'boolean' },
-            },
-            {
               id: 'note.comment.reply.start',
               label: '开始回复评论',
               behavior: 'other',
@@ -169,10 +180,6 @@ export const NAVIGATION_DECLARATION = {
               paramsSchema: { commentId: 'string', username: 'string' },
             },
             { id: 'note.comment.reply.cancel', label: '取消回复', behavior: 'other' },
-            { id: 'note.comment.sortMenu.toggle', label: '切换评论排序菜单', behavior: 'toggle', paramsSchema: { to: 'boolean' } },
-            { id: 'note.comment.sort.select.default', label: '评论排序-默认', behavior: 'select' },
-            { id: 'note.comment.sort.select.latest', label: '评论排序-最新', behavior: 'select' },
-            { id: 'note.comment.sort.select.hot', label: '评论排序-最多点赞', behavior: 'select' },
           ],
         },
         { id: 'noteDetail.modal.share', search: { modal: 'share' }, description: '笔记详情-分享面板', actions: [
@@ -220,9 +227,35 @@ export const NAVIGATION_DECLARATION = {
       scrollContainers: MAIN_SCROLL,
       uiStates: [{ id: 'chat.base', search: {}, description: '聊天', actions: [
           { id: 'chat.image.pick', label: '聊天-选择图片', behavior: 'other' },
+          { id: 'chat.file.open', label: '打开聊天附件', scope: 'item', behavior: 'other', paramsSchema: { fileId: 'string' } },
         ] }],
       queryParams: {},
       description: '聊天',
+    },
+    {
+      path: '/share',
+      component: 'ShareFilePage',
+      params: {},
+      entryPoint: 'deepLink',
+      scrollContainers: MAIN_SCROLL,
+      uiStates: [
+        {
+          id: 'share.file.base',
+          search: {},
+          description: '选择私信会话发送文件',
+          actions: [
+            {
+              id: 'share.file.recipient.select',
+              label: '选择文件接收会话',
+              scope: 'item',
+              behavior: 'other',
+              paramsSchema: { userId: 'string' },
+            },
+          ],
+        },
+      ],
+      queryParams: {},
+      description: '私信文件分享',
     },
     {
       path: '/chat/:userId/settings',
@@ -1105,6 +1138,17 @@ export const NAVIGATION_DECLARATION = {
       ui: { placement: 'topbar', icon: 'share', gesture: 'tap' },
     },
     {
+      id: 'note.comment.open',
+      from: ['/note/:id'],
+      to: '/note/:id',
+      search: { modal: 'comment' },
+      searchParams: {},
+      mode: 'push',
+      params: { id: 'string' },
+      label: '打开评论输入面板',
+      ui: { placement: 'content', icon: 'comment', gesture: 'tap' },
+    },
+    {
       id: 'user.open',
       from: [
         { path: '/', search: { tab: '*', modal: null, menu: null } },
@@ -1131,6 +1175,18 @@ export const NAVIGATION_DECLARATION = {
       params: { userId: 'string' },
       label: '打开聊天',
       ui: { placement: 'content', icon: 'chat', gesture: 'tap' },
+    },
+    {
+      id: 'share.file.send',
+      from: '/share',
+      to: '/chat/:userId',
+      search: {},
+      searchParams: {},
+      mode: 'replace',
+      params: { userId: 'string' },
+      label: '确认发送文件并打开私信',
+      ui: { placement: 'content', icon: 'send', gesture: 'tap' },
+      dataSource: { ref: 'chats', paramMapping: { userId: 'userId' }, labelField: 'username' },
     },
     {
       id: 'chat.settings.open',
@@ -1747,4 +1803,3 @@ export const NAVIGATION_DECLARATION = {
 } as const satisfies NavigationDeclaration;
 
 export type TransitionId = (typeof NAVIGATION_DECLARATION.transitions)[number]['id'];
-

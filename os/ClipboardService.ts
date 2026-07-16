@@ -1,6 +1,7 @@
 import BroadcastBus, { ACTION_CLIPBOARD_CHANGED } from './BroadcastBus';
 import { configureTextSelectionClipboardAdapter } from './TextSelectionService';
 import { createOsStore } from './createOsStore';
+import { useOsStateStore } from './OsStateStore';
 import * as TimeService from './TimeService';
 
 export type ClipboardItemType = 'text' | 'image' | 'file';
@@ -18,7 +19,9 @@ export interface ClipboardServiceState {
 }
 
 const MAX_HISTORY = 20;
+export const CLIPBOARD_ACCESS_EVENT = 'os:clipboard-access';
 let lastBroadcastSignature: string | null = null;
+let lastAccessAlert: { appId: string; at: number } | null = null;
 
 function nowMs(): number {
   return TimeService.now();
@@ -102,6 +105,23 @@ function broadcastClipboardChanged(state: ClipboardServiceState) {
   });
 }
 
+function notifyClipboardRead(item: ClipboardItem | null): void {
+  if (!item || typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+  if (!useOsStateStore.getState().settings.secure.privacy.clipboardAccessAlertsEnabled) return;
+  const osState = typeof window.__OS__?.getState === 'function'
+    ? window.__OS__.getState()
+    : window.__OS__?.state;
+  const appId = String(osState?.activeAppId ?? '').trim();
+  if (!appId || appId === 'settings') return;
+
+  const now = TimeService.realNow();
+  if (lastAccessAlert?.appId === appId && now - lastAccessAlert.at < 2_000) return;
+  lastAccessAlert = { appId, at: now };
+  window.dispatchEvent(new CustomEvent(CLIPBOARD_ACCESS_EVENT, {
+    detail: { appId, type: item.type },
+  }));
+}
+
 export const ClipboardService = {
   getState: base.getState,
 
@@ -112,7 +132,9 @@ export const ClipboardService = {
 
   read(): ClipboardItem | null {
     const state = base.getState();
-    return state.history[0] ?? state.current;
+    const item = state.history[0] ?? state.current;
+    notifyClipboardRead(item);
+    return item;
   },
 
   write(item: Omit<ClipboardItem, 'timestamp'>): void {

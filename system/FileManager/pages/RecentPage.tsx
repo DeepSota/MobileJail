@@ -23,10 +23,13 @@ import { TransferSheet } from '../components/TransferSheet';
 import { CollapsingToolbar, CollapsingLargeTitle, TOOLBAR_SPACER_HEIGHT } from '@/os/components/CollapsingToolbar';
 import { IcShare, IcMove, IcDelete, IcMoreCircle } from '../res/icons';
 import * as TimeService from '@/os/TimeService';
-import { transferNodesToDirectory, shareNodesAsImages, shareNodesAsFiles, type TransferOperation } from '../utils/fileOperations';
+import { shareNodes, transferNodesToDirectory, type TransferOperation } from '../utils/fileOperations';
+import { getFileOpenTarget, useOpenFile } from '../hooks/useOpenFile';
+import { UnsupportedFileSheet } from '../components/UnsupportedFileSheet';
 
 export const RecentPage: React.FC = () => {
   const { go, back } = useFileManagerGestures();
+  const { openFile, unsupportedFile, dismissUnsupportedFile } = useOpenFile();
   const location = useLocation();
   const s = useAppStrings(strings, stringsEn);
 
@@ -103,9 +106,8 @@ export const RecentPage: React.FC = () => {
   };
 
   const refreshItems = () => {
-    const mediaFiles = FileSystem.getMediaFiles();
-    const downloadFiles = FileSystem.getFilesByPath('/sdcard/Download');
-    const allFiles = Array.from(new Set([...mediaFiles, ...downloadFiles]))
+    const allFiles = FileSystem.searchFiles('', { type: 'file' })
+      .filter(file => !file.path.startsWith('/data/data/'))
       .sort((a, b) => b.modifiedAt - a.modifiedAt);
     setItems(allFiles);
   };
@@ -175,13 +177,7 @@ export const RecentPage: React.FC = () => {
       toggleSelect(item.id);
       return;
     }
-    if (item.mimeType?.startsWith('image/')) {
-      window.__OS__?.startActivity?.({
-        action: 'ACTION_VIEW',
-        type: item.mimeType,
-        data: { stream: item.path },
-      });
-    }
+    openFile(item);
   };
 
   const handlePointerDown = (item: FSNode) => {
@@ -345,6 +341,25 @@ export const RecentPage: React.FC = () => {
                       const isImage = item.mimeType?.startsWith('image/');
                       const Icon = isImage ? null : getFileIcon(item);
                       const iconColor = isImage ? '' : getFileIconColor(item);
+                      const openTarget = getFileOpenTarget(item);
+                      const triggerId = openTarget === 'viewer'
+                        ? 'file.viewer.open'
+                        : openTarget === 'unsupported'
+                          ? 'recent.file.unsupported.open'
+                          : undefined;
+                      const openAttrs = triggerId
+                        ? {
+                            'data-trigger': triggerId,
+                            'data-trigger-type': 'tap',
+                            'data-trigger-params': JSON.stringify(
+                              openTarget === 'unsupported' ? { itemPath: item.path } : { path: item.path },
+                            ),
+                          }
+                        : {
+                            'data-action': 'recent.file.image.open',
+                            'data-action-type': 'tap',
+                            'data-action-params': JSON.stringify({ path: item.path }),
+                          };
                       return (
                         <div key={item.id}
                           onClick={() => handleItemClick(item)}
@@ -353,11 +368,7 @@ export const RecentPage: React.FC = () => {
                           onPointerUp={handlePointerUp}
                           onPointerCancel={handlePointerUp}
                           onPointerLeave={handlePointerUp}
-                          {...(isImage ? {
-                            'data-action': 'file.image.open',
-                            'data-action-type': 'open',
-                            'data-action-params': JSON.stringify({ path: item.path }),
-                          } : {})}
+                          {...openAttrs}
                           className="flex flex-col items-center gap-1 active:opacity-70 transition-opacity relative">
                           <div className={`w-full aspect-square bg-gray-50 rounded-xl overflow-hidden relative border ${isSelected ? 'border-app-primary shadow-[0_0_0_1px_var(--app-primary)]' : 'border-gray-100/50'} flex items-center justify-center`}>
                             {isImage ? <AsyncImage path={item.path} className="w-full h-full object-cover" /> :
@@ -396,11 +407,11 @@ export const RecentPage: React.FC = () => {
           <button
             disabled={!hasSelection}
             onClick={() => {
-              const ok = shareNodesAsImages(getSelectedNodes()) || shareNodesAsFiles(getSelectedNodes());
+              const ok = shareNodes(getSelectedNodes());
               if (!ok) showToast(s.toast_send_no_image);
             }}
             data-action="recent.select.send"
-            data-action-type="open"
+            data-action-type="tap"
             className={actionBtn}
           >
             <div className="w-6 h-6 flex items-center justify-center">
@@ -471,6 +482,8 @@ export const RecentPage: React.FC = () => {
         onCloseCreateFolder={back}
         onCreatedFolder={refreshItems}
       />
+
+      <UnsupportedFileSheet file={unsupportedFile} onClose={dismissUnsupportedFile} />
 
       <Toast message={toast.message} visible={toast.visible} />
       {!isSelecting && <TabBar />}

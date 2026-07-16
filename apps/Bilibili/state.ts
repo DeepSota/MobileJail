@@ -3,6 +3,8 @@ import { BILIBILI_CONFIG } from './data';
 import type { BilibiliUser, BilibiliSettings, CommentReply, BilibiliChatConversation, BilibiliChatMessage, BilibiliDynamic, BilibiliDanmaku } from './types';
 import * as TimeService from '../../os/TimeService';
 import { getAuthorsSync } from './data/loader';
+import type { FileRefV1 } from '@/os/types/fileShare';
+import { resolveBilibiliStateStrings } from './utils/stateStrings';
 
 const simNow = TimeService.now;
 
@@ -44,10 +46,12 @@ function upsertChatMessages(
   chats: BilibiliChatConversation[],
   toUserId: string,
   user: BilibiliUser,
+  language: string | null,
   nowTs: number,
   outgoingMessages: BilibiliChatMessage[],
   options?: { username?: string; avatar?: string },
 ): BilibiliChatConversation[] {
+  const stateStrings = resolveBilibiliStateStrings(language);
   const updatedChats = [...chats];
   const chatIndex = updatedChats.findIndex(c => c.userId === toUserId);
 
@@ -78,7 +82,7 @@ function upsertChatMessages(
     const chat = { ...updatedChats[chatIndex] };
     chat.messages = [...chat.messages, ...messagesToAppend];
     const lastOutgoing = outgoingMessages[outgoingMessages.length - 1];
-    chat.lastMessage = lastOutgoing?.type === 'image' ? '[图片]' : lastOutgoing?.type === 'video' ? '[视频]' : (lastOutgoing?.content || '');
+    chat.lastMessage = lastOutgoing?.type === 'image' ? stateStrings.chat_image_placeholder : lastOutgoing?.type === 'video' ? '[视频]' : (lastOutgoing?.content || '');
     chat.lastTime = nowTs;
     updatedChats.splice(chatIndex, 1);
     updatedChats.unshift(chat);
@@ -98,7 +102,7 @@ function upsertChatMessages(
   if (!resolvedName || !resolvedAvatar) {
     const authors = getAuthorsSync();
     if (authors) {
-      const authorInfo = authors[toUserId] || authors[Number(toUserId)];
+      const authorInfo = authors[Number(toUserId)];
       if (!resolvedName && authorInfo?.name) resolvedName = authorInfo.name;
       if (!resolvedAvatar && authorInfo?.face) resolvedAvatar = authorInfo.face;
     }
@@ -108,7 +112,7 @@ function upsertChatMessages(
     username: resolvedName,
     avatar: resolvedAvatar,
     unreadCount: 0,
-    lastMessage: lastOutgoing?.type === 'image' ? '[图片]' : lastOutgoing?.type === 'video' ? '[视频]' : (lastOutgoing?.content || ''),
+    lastMessage: lastOutgoing?.type === 'image' ? stateStrings.chat_image_placeholder : lastOutgoing?.type === 'video' ? '[视频]' : (lastOutgoing?.content || ''),
     lastTime: nowTs,
     messages: messagesToAppend,
   });
@@ -167,6 +171,7 @@ interface BilibiliActions {
   // Chat
   sendMessage: (toUserId: string, content: string) => void;
   sendImageMessage: (toUserId: string, imageUri: string) => void;
+  sendSharedFiles: (toUserId: string, files: FileRefV1[]) => boolean;
   sendVideoMessage: (toUserId: string, videoId: string, videoMeta?: { cover?: string; title?: string; author?: string }) => void;
 
   // Share
@@ -522,7 +527,7 @@ export const useBilibiliStore = createAppStoreWithActions<BilibiliState, Bilibil
           timestamp: nowTs,
           type: 'text',
         };
-        return { chats: upsertChatMessages(s.chats, toUserId, s.user, nowTs, [newMessage]) };
+        return { chats: upsertChatMessages(s.chats, toUserId, s.user, s.settings.language, nowTs, [newMessage]) };
       });
     },
 
@@ -530,16 +535,50 @@ export const useBilibiliStore = createAppStoreWithActions<BilibiliState, Bilibil
       set((state) => {
         const s = state as BilibiliState;
         const nowTs = simNow();
+        const stateStrings = resolveBilibiliStateStrings(s.settings.language);
         const newMessage: BilibiliChatMessage = {
           id: `msg_${nowTs}`,
           senderId: String(s.user.uid || s.user.name),
-          content: '[图片]',
+          content: stateStrings.chat_image_placeholder,
           timestamp: nowTs,
           type: 'image',
           image: imageUri,
         };
-        return { chats: upsertChatMessages(s.chats, toUserId, s.user, nowTs, [newMessage]) };
+        return { chats: upsertChatMessages(s.chats, toUserId, s.user, s.settings.language, nowTs, [newMessage]) };
       });
+    },
+
+    sendSharedFiles: (toUserId, files) => {
+      if (files.length === 0) return false;
+      const s = get();
+      const chat = s.chats.find((item) => item.userId === toUserId);
+      const relation = [...(s.user.followingList ?? []), ...(s.user.followersList ?? [])]
+        .find((item) => String(item.mid) === toUserId);
+      // Do not recreate a conversation from a stale id after the asynchronous
+      // attachment copy. The target must still be a chat or real relationship.
+      if (!chat && !relation) return false;
+
+      const nowTs = simNow();
+      const messages: BilibiliChatMessage[] = files.map((file, index) => ({
+        id: `msg_${nowTs}_${index}_${file.fileId}`,
+        senderId: String(s.user.uid || s.user.name),
+        content: file.name,
+        timestamp: nowTs + index,
+        type: file.mimeType.startsWith('image/') ? 'image' : 'file',
+        fileRef: file,
+      }));
+      set({
+        chats: upsertChatMessages(
+          s.chats,
+          toUserId,
+          s.user,
+          s.settings.language,
+          nowTs,
+          messages,
+          relation ? { username: relation.name, avatar: relation.face } : undefined,
+        ),
+      });
+      return true;
     },
 
     sendVideoMessage: (toUserId, videoId, videoMeta) => {
@@ -557,7 +596,7 @@ export const useBilibiliStore = createAppStoreWithActions<BilibiliState, Bilibil
           sharedVideoTitle: videoMeta?.title || videoId,
           sharedVideoAuthor: videoMeta?.author || '',
         };
-        return { chats: upsertChatMessages(s.chats, toUserId, s.user, nowTs, [newMessage]) };
+        return { chats: upsertChatMessages(s.chats, toUserId, s.user, s.settings.language, nowTs, [newMessage]) };
       });
     },
 

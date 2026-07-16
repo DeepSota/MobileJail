@@ -106,5 +106,23 @@ describe('X 帖子时间派生', () => {
         { id: 'p_older', createdAt: '2025-01-15T13:50:46.076Z', time: '2d' },
       ),
     ).toBeLessThan(0);
+
+    expect(
+      compareXPostsByRecencyDesc(
+        { id: 'p_relative_older', time: '2d' },
+        { id: 'p_explicit_newer', createdAt: '2026-03-25T04:43:06.000Z', time: '1h' },
+      ),
+    ).toBeGreaterThan(0);
+  });
+
+  it('相对 time 与显式 createdAt 落在同一分钟时，仍用精确时间作 tie-break', async () => {
+    const { compareXPostsByRecencyDesc } = await import('../apps/X/utils/formatTime');
+
+    expect(
+      compareXPostsByRecencyDesc(
+        { id: 'new_1774417385000', createdAt: '2026-03-25T05:43:05.000Z', time: 'just now' },
+        { id: 'retweet_without_timestamp', time: 'just now' },
+      ),
+    ).toBeLessThan(0);
   });
 });

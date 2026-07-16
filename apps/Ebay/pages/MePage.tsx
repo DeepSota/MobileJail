@@ -3,10 +3,19 @@ import { IcCart, IcMail, IcUser, IcNavForward, IcHeart, IcRefresh, IcClose, IcPa
 import { useEbayGestures } from '../navigation';
 import TabBar from '../components/TabBar';
 import { useEbayStrings } from '../hooks/useEbayStrings';
+import { useEbayStore } from '../state';
 
 const MePage: React.FC = () => {
   const { bindTap, bindAction } = useEbayGestures();
   const s = useEbayStrings();
+  const user = useEbayStore(state => state.user);
+  const logout = useEbayStore(state => state.logout);
+  const logoutActionProps = bindAction('me.auth.logout');
+
+  const handleLogout = (event: React.MouseEvent<HTMLButtonElement>) => {
+    logoutActionProps.onClick(event);
+    logout();
+  };
 
   return (
     <div className="h-full bg-app-surface flex flex-col relative">
@@ -30,12 +39,26 @@ const MePage: React.FC = () => {
             <div className="w-16 h-16 rounded-full border border-gray-300 flex items-center justify-center">
                 <IcUser size={32} className="text-app-text" />
             </div>
-            <button 
-                {...bindAction('me.auth.login')}
-                className="text-xl font-bold text-black"
-            >
-                {s.me_login}
-            </button>
+            {user.isLoggedIn ? (
+              <div className="min-w-0 flex-1">
+                <p className="text-xl font-bold text-black truncate">{user.name}</p>
+                <p className="text-sm text-gray-500 truncate">{user.username}</p>
+                <button
+                  {...logoutActionProps}
+                  onClick={handleLogout}
+                  className="mt-2 text-sm font-medium text-blue-600"
+                >
+                  {s.auth_logout}
+                </button>
+              </div>
+            ) : (
+              <button
+                  {...bindTap('me.auth.login')}
+                  className="text-xl font-bold text-black"
+              >
+                  {s.me_login}
+              </button>
+            )}
           </div>
 
           {/* Latest News Section */}

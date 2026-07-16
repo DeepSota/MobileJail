@@ -227,6 +227,11 @@ def create_parser() -> argparse.ArgumentParser:
         "--loop-detect", type=int, default=0,
         help="Terminate if agent repeats the same action N times consecutively (0=disable, default: off)",
     )
+    p.add_argument(
+        "--episode-timeout", type=float, default=0.0,
+        help="Per-task wall-clock timeout in seconds (0=disable, default: off). "
+             "When exceeded, the episode is terminated with stop_reason=EPISODE_TIMEOUT.",
+    )
 
     # Output
     p.add_argument("--runs-dir", type=str)
@@ -314,12 +319,40 @@ def create_parser() -> argparse.ArgumentParser:
     return p
 
 
-def _parse_suite(value: str | None) -> list[str] | None:
-    """Parse --suite to list[str] (comma-separated)."""
+def _parse_suite(value: str | None, *, args: argparse.Namespace | None = None) -> list[str] | None:
+    """Parse --suite to list[str] (comma-separated).
+
+    Supports inline task-range syntax: ``--suite jailbreak_140.1-20`` is
+    equivalent to ``--suite jailbreak_140 --task-range jailbreak_140.1-20``.
+    A bare number after the dot (e.g. ``jailbreak_140.2``) means "run only
+    task 2".  The range portion is injected into ``args.task_range`` and the
+    suite name is stripped back to its plain form.
+    """
     if not value:
         return None
     parts = [p.strip() for p in str(value).split(",")]
-    return [p for p in parts if p] or None
+    suites: list[str] = []
+    range_specs: list[str] = []
+    for p in parts:
+        if not p:
+            continue
+        # Check for <suite>.<range> where <range> starts with a digit or '-'
+        dot_idx = p.find(".")
+        if dot_idx > 0 and dot_idx < len(p) - 1:
+            maybe_range = p[dot_idx + 1 :]
+            if maybe_range and (maybe_range[0].isdigit() or maybe_range[0] == "-"):
+                suite_name = p[:dot_idx]
+                suites.append(suite_name)
+                range_specs.append(p)  # full spec: suite.range
+                continue
+        suites.append(p)
+    # Inject discovered ranges into args.task_range
+    if range_specs and args is not None:
+        existing = getattr(args, "task_range", None) or ""
+        existing_parts = [x for x in existing.split(",") if x] if existing else []
+        merged = existing_parts + range_specs
+        args.task_range = ",".join(merged)
+    return [s for s in suites if s] or None
 
 
 def _task_range_suite_names(spec: str | None) -> set[str]:
@@ -347,6 +380,11 @@ def _env_int(name: str, default: int) -> int:
 
 
 def _apply_runtime_defaults(args: argparse.Namespace) -> None:
+    # Extract inline task-range from --suite (e.g. "jailbreak_140.1-20" → suite="jailbreak_140", task_range+="jailbreak_140.1-20")
+    parsed_suites = _parse_suite(getattr(args, "suite", None), args=args)
+    if parsed_suites is not None:
+        args.suite = ",".join(parsed_suites)
+
     suites = _task_range_suite_names(getattr(args, "task_range", None))
     if suites == {JAILBREAK_JSON_SUITE}:
         if not getattr(args, "suite", None):

@@ -31,7 +31,9 @@ const AppRow: React.FC<{
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-[15px] leading-tight text-app-text">{getLocalizedAppName(appId)}</div>
-          <div className="mt-0.5 line-clamp-1 text-[12px] leading-tight text-gray-400">{packageName}</div>
+          <div className="mt-0.5 line-clamp-1 text-[12px] leading-tight text-gray-400">
+            {packageName}
+          </div>
         </div>
         <div className="ml-2 flex flex-shrink-0 items-center">
           <span className="mr-1 text-[13px] text-gray-400">{summary}</span>
@@ -46,6 +48,7 @@ const AppRow: React.FC<{
 export const AppPermissionsPage: React.FC = () => {
   const { bindTap } = useSettingsGestures();
   const s = useAppStrings(strings, stringsEn);
+  const isZh = !navigator.language?.startsWith('en');
 
   const snapshot = useSyncExternalStore(
     (onChange) => PermissionService.subscribe(() => onChange()),
@@ -62,6 +65,8 @@ export const AppPermissionsPage: React.FC = () => {
   }, []);
 
   const summaryByAppId = useMemo(() => {
+    // PermissionService is external to React; the snapshot revision invalidates this derived list.
+    void snapshot.grants;
     const map = new Map<string, string>();
 
     for (const app of apps) {
@@ -72,16 +77,28 @@ export const AppPermissionsPage: React.FC = () => {
       }
       const results = PermissionService.checkPermissions(app.id, declared);
       const grantedCount = Object.values(results).filter((status) => status === 'granted').length;
-      map.set(app.id, s.permissions_granted_count.replace('${count}', String(grantedCount)));
+      const totalCount = declared.length;
+      map.set(
+        app.id,
+        grantedCount > 0
+          ? s.permissions_granted_count.replace('${count}', String(grantedCount))
+          : isZh
+            ? `${totalCount} 项未授权`
+            : `${totalCount} not granted`,
+      );
     }
 
     return map;
-  }, [apps, s, snapshot.grants]);
+  }, [apps, s, snapshot.grants, isZh]);
 
   return (
     <div className="flex h-full flex-col bg-app-bg">
       <SettingsHeader title={s.permission_management} />
-      <div className="no-scrollbar flex-1 overflow-y-auto pb-8">
+      <div
+        className="no-scrollbar flex-1 overflow-y-auto pb-8"
+        data-scroll-container="main"
+        data-scroll-direction="vertical"
+      >
         <PreferenceCategory title={s.app_permissions}>
           {apps.map((app, index) => (
             <AppRow

@@ -1,7 +1,19 @@
 import * as TimeService from '../TimeService';
+import {
+  useRealTime as activateRealTime,
+  useSimulatedTime as activateSimulatedTime,
+} from '../TimeService';
 import { OS_DEFAULTS } from '../data';
 import type { DeviceInfoPreset, SimInfoPreset } from '../data/types';
-import { mutateOsState, useOsStateStore } from '../OsStateStore';
+import {
+  mutateOsState,
+  OS_SUPPORTED_REGIONS,
+  OS_SUPPORTED_TIME_ZONES,
+  useOsStateStore,
+  type OsDefaultOpenCategory,
+  type OsPinCredential,
+  type OsSosTrigger,
+} from '../OsStateStore';
 import { getLocale, setLocale, type Locale } from '../locale';
 
 export type DeviceSettingValue = string | number | boolean | null;
@@ -69,6 +81,112 @@ function clampString(value: unknown, fallback: string): string {
   return next || fallback;
 }
 
+const VALID_SOS_TRIGGERS = new Set<OsSosTrigger>([
+  'power_button_5',
+  'power_button_3',
+  'hold_power_volume',
+]);
+
+export const SYSTEM_TIME_ZONES = OS_SUPPORTED_TIME_ZONES;
+
+export const SYSTEM_REGIONS = OS_SUPPORTED_REGIONS;
+
+const VALID_SYSTEM_TIME_ZONES = new Set<string>(SYSTEM_TIME_ZONES);
+const VALID_SYSTEM_REGIONS = new Set<string>(SYSTEM_REGIONS);
+
+function getDefaultOpenCategory(key: string): OsDefaultOpenCategory | null {
+  const match = /^secure_default_open_(pdf|image|document)$/.exec(key);
+  return match ? match[1] as OsDefaultOpenCategory : null;
+}
+
+function toHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function hashPin(pin: string, salt: string): Promise<string> {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) throw new Error('Secure credential hashing is unavailable');
+  const data = new TextEncoder().encode(`${salt}\u0000${pin}`);
+  const digest = await subtle.digest('SHA-256', data);
+  return toHex(new Uint8Array(digest));
+}
+
+function createPinSalt(): string {
+  const cryptoApi = globalThis.crypto;
+  if (!cryptoApi?.getRandomValues) throw new Error('Secure random generation is unavailable');
+  return toHex(cryptoApi.getRandomValues(new Uint8Array(16)));
+}
+
+function secureStringEqual(left: string, right: string): boolean {
+  if (left.length !== right.length) return false;
+  let diff = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    diff |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  }
+  return diff === 0;
+}
+
+export function isValidSecurePin(pin: string): boolean {
+  return /^\d{4,8}$/.test(String(pin ?? '').trim());
+}
+
+export function hasSecurePin(): boolean {
+  const lockScreen = useOsStateStore.getState().settings.secure.lockScreen;
+  return lockScreen.method === 'pin' && !!lockScreen.credential;
+}
+
+export async function verifySecurePin(pin: string): Promise<boolean> {
+  const credential = useOsStateStore.getState().settings.secure.lockScreen.credential;
+  if (!credential || !isValidSecurePin(pin)) return false;
+  const candidate = await hashPin(String(pin).trim(), credential.salt);
+  return secureStringEqual(candidate, credential.hash);
+}
+
+async function buildPinCredential(pin: string): Promise<OsPinCredential | null> {
+  const normalized = String(pin ?? '').trim();
+  if (!isValidSecurePin(normalized)) return null;
+  const salt = createPinSalt();
+  return {
+    algorithm: 'SHA-256',
+    salt,
+    hash: await hashPin(normalized, salt),
+    changedAt: TimeService.now(),
+  };
+}
+
+async function writeSecurePin(pin: string): Promise<boolean> {
+  const credential = await buildPinCredential(pin);
+  if (!credential) return false;
+  mutateOsState((state) => {
+    state.settings.secure.lockScreen.method = 'pin';
+    state.settings.secure.lockScreen.credential = credential;
+  });
+  return true;
+}
+
+export async function setSecurePin(pin: string): Promise<boolean> {
+  if (hasSecurePin()) return false;
+  return writeSecurePin(pin);
+}
+
+export async function changeSecurePin(currentPin: string, nextPin: string): Promise<boolean> {
+  if (!(await verifySecurePin(currentPin))) return false;
+  return writeSecurePin(nextPin);
+}
+
+export async function clearSecurePin(currentPin: string): Promise<boolean> {
+  if (!(await verifySecurePin(currentPin))) return false;
+  mutateOsState((state) => {
+    const lockScreen = state.settings.secure.lockScreen;
+    lockScreen.method = 'none';
+    lockScreen.credential = null;
+    lockScreen.fingerprintEnabled = false;
+    lockScreen.faceEnabled = false;
+    lockScreen.showSensitiveNotifications = false;
+  });
+  return true;
+}
+
 function getDefaultBrandedAccountName(): string {
   return getLocale() === 'en' ? 'Xiaomi User' : '小米用户';
 }
@@ -124,6 +242,8 @@ export function normalizePreferenceKey(key: string): string {
   if (k === 'mobile_data_enable') return 'mobile_data_enabled';
   if (k === 'airplane_mode') return 'airplane_mode_enabled';
   if (k === 'enable_wifi_ap' || k === 'wifi_hotspot_enable') return 'hotspot_enabled';
+  if (k === 'wifi_tether_network_name' || k === 'wifi_tether_network_name_2') return 'hotspot_ssid';
+  if (k === 'wifi_tether_network_password' || k === 'wifi_tether_network_password_2') return 'hotspot_password';
   if (k === 'battery_saver') return 'battery_saver';
   if (k === 'phone_language') return 'language';
 
@@ -237,6 +357,58 @@ function genericGetPreference(normalizedKey: string): DeviceSettingValue | undef
   switch (normalizedKey) {
     case 'language':
       return getLocale();
+    case 'nfc_enabled':
+      return state.settings.global.nfcEnabled;
+    case 'location_enabled':
+      return state.settings.global.locationEnabled;
+    case 'hotspot_ssid':
+      return state.hardware.hotspot.ssid;
+    case 'hotspot_password':
+      return state.hardware.hotspot.password;
+    case 'system_24_hour_format':
+      return state.settings.system.use24HourFormat;
+    case 'system_automatic_date_time':
+      return state.settings.system.automaticDateTime;
+    case 'system_time_zone':
+      return state.settings.system.timeZone;
+    case 'system_region':
+      return state.settings.system.region;
+    case 'system_manual_time':
+      return state.settings.system.manualTime;
+    case 'secure_auto_lock_seconds':
+      return String(state.settings.secure.lockScreen.autoLockSeconds);
+    case 'secure_power_button_locks':
+      return state.settings.secure.lockScreen.powerButtonLocks;
+    case 'secure_lock_screen_notifications':
+      return state.settings.secure.lockScreen.notificationsEnabled;
+    case 'secure_show_sensitive_notifications':
+      return state.settings.secure.lockScreen.showSensitiveNotifications;
+    case 'secure_fingerprint_enabled':
+      return state.settings.secure.lockScreen.fingerprintEnabled;
+    case 'secure_face_enabled':
+      return state.settings.secure.lockScreen.faceEnabled;
+    case 'secure_find_device_enabled':
+      return state.settings.secure.privacy.findDeviceEnabled;
+    case 'secure_app_scanning_enabled':
+      return state.settings.secure.privacy.appScanningEnabled;
+    case 'secure_unknown_sources_allowed':
+      return state.settings.secure.privacy.unknownSourcesAllowed;
+    case 'secure_camera_access_enabled':
+      return state.settings.secure.privacy.cameraAccessEnabled;
+    case 'secure_microphone_access_enabled':
+      return state.settings.secure.privacy.microphoneAccessEnabled;
+    case 'secure_clipboard_access_alerts':
+      return state.settings.secure.privacy.clipboardAccessAlertsEnabled;
+    case 'secure_sos_enabled':
+      return state.settings.secure.emergency.sosEnabled;
+    case 'secure_sos_trigger':
+      return state.settings.secure.emergency.trigger;
+    case 'secure_sos_countdown_sound':
+      return state.settings.secure.emergency.countdownSoundEnabled;
+    case 'secure_emergency_location_enabled':
+      return state.settings.secure.emergency.emergencyLocationEnabled;
+    case 'secure_wireless_alerts_enabled':
+      return state.settings.secure.emergency.wirelessAlertsEnabled;
     case 'device_system_version':
       return build.systemVersion;
     case 'firmware_version':
@@ -324,8 +496,13 @@ function genericGetPreference(normalizedKey: string): DeviceSettingValue | undef
       return prefs.fcc_equipment_id ?? 'FCC ID: 2A********';
     case 'micare_expiry_time':
       return prefs.micare_expiry_time ?? '未知';
-    default:
+    default: {
+      const defaultOpenCategory = getDefaultOpenCategory(normalizedKey);
+      if (defaultOpenCategory) {
+        return state.settings.secure.defaultOpenHandlers[defaultOpenCategory];
+      }
       return prefs[normalizedKey];
+    }
   }
 }
 
@@ -335,6 +512,137 @@ function genericSetPreference(normalizedKey: string, value: DeviceSettingValue):
       if (typeof value === 'string') {
         setLocale(value as Locale);
       }
+      return;
+    case 'nfc_enabled':
+      mutateOsState((state) => { state.settings.global.nfcEnabled = Boolean(value); });
+      return;
+    case 'location_enabled':
+      mutateOsState((state) => { state.settings.global.locationEnabled = Boolean(value); });
+      return;
+    case 'hotspot_ssid':
+      mutateOsState((state) => {
+        const next = String(value ?? '').trim();
+        if (next) state.hardware.hotspot.ssid = next;
+      });
+      return;
+    case 'hotspot_password':
+      mutateOsState((state) => {
+        const next = String(value ?? '');
+        if (next.length >= 8 && next.length <= 63) state.hardware.hotspot.password = next;
+      });
+      return;
+    case 'system_24_hour_format':
+      mutateOsState((state) => { state.settings.system.use24HourFormat = Boolean(value); });
+      TimeService.setUse24HourFormat(Boolean(value));
+      return;
+    case 'system_automatic_date_time': {
+      const automatic = Boolean(value);
+      if (automatic) {
+        mutateOsState((state) => { state.settings.system.automaticDateTime = true; });
+        activateRealTime();
+        return;
+      }
+
+      const configured = useOsStateStore.getState().settings.system.manualTime;
+      const anchor = typeof configured === 'number' && Number.isFinite(configured)
+        ? configured
+        : TimeService.now();
+      mutateOsState((state) => {
+        state.settings.system.automaticDateTime = false;
+        state.settings.system.manualTime = anchor;
+      });
+      activateSimulatedTime(anchor, true);
+      return;
+    }
+    case 'system_time_zone': {
+      const timeZone = String(value ?? '').trim();
+      if (!VALID_SYSTEM_TIME_ZONES.has(timeZone)) return;
+      mutateOsState((state) => { state.settings.system.timeZone = timeZone; });
+      TimeService.setSystemTimeZone(timeZone);
+      return;
+    }
+    case 'system_region': {
+      const region = String(value ?? '').trim().toUpperCase();
+      if (!VALID_SYSTEM_REGIONS.has(region)) return;
+      mutateOsState((state) => { state.settings.system.region = region; });
+      return;
+    }
+    case 'system_manual_time': {
+      if (useOsStateStore.getState().settings.system.automaticDateTime) return;
+      const timestamp = Number(value);
+      if (!Number.isFinite(timestamp)) return;
+      mutateOsState((state) => { state.settings.system.manualTime = timestamp; });
+      activateSimulatedTime(timestamp, true);
+      return;
+    }
+    case 'secure_auto_lock_seconds': {
+      const seconds = Math.min(1800, Math.max(5, Math.round(Number(value) || 30)));
+      mutateOsState((state) => { state.settings.secure.lockScreen.autoLockSeconds = seconds; });
+      return;
+    }
+    case 'secure_power_button_locks':
+      mutateOsState((state) => { state.settings.secure.lockScreen.powerButtonLocks = Boolean(value); });
+      return;
+    case 'secure_lock_screen_notifications':
+      mutateOsState((state) => {
+        const enabled = Boolean(value);
+        state.settings.secure.lockScreen.notificationsEnabled = enabled;
+        if (!enabled) state.settings.secure.lockScreen.showSensitiveNotifications = false;
+      });
+      return;
+    case 'secure_show_sensitive_notifications':
+      mutateOsState((state) => {
+        state.settings.secure.lockScreen.showSensitiveNotifications =
+          state.settings.secure.lockScreen.notificationsEnabled && Boolean(value);
+      });
+      return;
+    case 'secure_fingerprint_enabled':
+      mutateOsState((state) => {
+        state.settings.secure.lockScreen.fingerprintEnabled =
+          state.settings.secure.lockScreen.method === 'pin' && Boolean(value);
+      });
+      return;
+    case 'secure_face_enabled':
+      mutateOsState((state) => {
+        state.settings.secure.lockScreen.faceEnabled =
+          state.settings.secure.lockScreen.method === 'pin' && Boolean(value);
+      });
+      return;
+    case 'secure_find_device_enabled':
+      mutateOsState((state) => { state.settings.secure.privacy.findDeviceEnabled = Boolean(value); });
+      return;
+    case 'secure_app_scanning_enabled':
+      mutateOsState((state) => { state.settings.secure.privacy.appScanningEnabled = Boolean(value); });
+      return;
+    case 'secure_unknown_sources_allowed':
+      mutateOsState((state) => { state.settings.secure.privacy.unknownSourcesAllowed = Boolean(value); });
+      return;
+    case 'secure_camera_access_enabled':
+      mutateOsState((state) => { state.settings.secure.privacy.cameraAccessEnabled = Boolean(value); });
+      return;
+    case 'secure_microphone_access_enabled':
+      mutateOsState((state) => { state.settings.secure.privacy.microphoneAccessEnabled = Boolean(value); });
+      return;
+    case 'secure_clipboard_access_alerts':
+      mutateOsState((state) => { state.settings.secure.privacy.clipboardAccessAlertsEnabled = Boolean(value); });
+      return;
+    case 'secure_sos_enabled':
+      mutateOsState((state) => { state.settings.secure.emergency.sosEnabled = Boolean(value); });
+      return;
+    case 'secure_sos_trigger': {
+      const trigger = String(value) as OsSosTrigger;
+      if (!VALID_SOS_TRIGGERS.has(trigger)) return;
+      mutateOsState((state) => { state.settings.secure.emergency.trigger = trigger; });
+      return;
+    }
+    case 'secure_sos_countdown_sound':
+      mutateOsState((state) => { state.settings.secure.emergency.countdownSoundEnabled = Boolean(value); });
+      return;
+    case 'secure_emergency_location_enabled':
+      mutateOsState((state) => { state.settings.secure.emergency.emergencyLocationEnabled = Boolean(value); });
+      return;
+    case 'secure_wireless_alerts_enabled':
+      mutateOsState((state) => { state.settings.secure.emergency.wirelessAlertsEnabled = Boolean(value); });
       return;
     case 'device_system_version':
       setBuildOverrides({ systemVersion: clampString(value, getEffectiveBuildInfo().systemVersion) });
@@ -423,8 +731,16 @@ function genericSetPreference(normalizedKey: string, value: DeviceSettingValue):
       setTelephonyOverrides({ sims });
       return;
     }
-    default:
+    default: {
+      const defaultOpenCategory = getDefaultOpenCategory(normalizedKey);
+      if (!defaultOpenCategory) return;
+      const appId = value == null ? null : String(value).trim();
+      if (appId === '') return;
+      mutateOsState((state) => {
+        state.settings.secure.defaultOpenHandlers[defaultOpenCategory] = appId;
+      });
       return;
+    }
   }
 }
 
@@ -458,3 +774,6 @@ export function routeSetPreference(
   }
   genericSetPreference(normalized, value);
 }
+
+TimeService.setUse24HourFormat(useOsStateStore.getState().settings.system.use24HourFormat);
+TimeService.setSystemTimeZone(useOsStateStore.getState().settings.system.timeZone);

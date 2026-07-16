@@ -7,8 +7,9 @@
  *   through the system gateway endpoint: POST /api/gw/fetch
  *
  * How it works:
- * - Relative URLs (same-origin) use native fetch directly
- * - Absolute URLs (http/https) are automatically proxied through /api/gw/fetch
+ * - Local static resources and offline-capable system APIs use native fetch directly
+ * - Cross-origin HTTP(S) requests are automatically proxied through /api/gw/fetch
+ * - Requests that need a network transport fail before fetch when Wi-Fi and mobile data are unavailable
  *
  * Notes:
  * - This is a "system service" abstraction. Real mobile OS has no CORS; this is our Web equivalent.
@@ -16,6 +17,7 @@
  */
 
 import { immediateSetItem } from './debouncedPersist';
+import { useOsStateStore } from './OsStateStore';
 import { realNow } from './TimeService';
 
 export type NetFetchOptions = RequestInit & {
@@ -32,8 +34,79 @@ type GatewayFetchPayload = {
   body?: string;
 };
 
+/** Stable error surfaced when the simulated device has no usable transport. */
+export class NetworkUnavailableError extends Error {
+  readonly code = 'NETWORK_UNAVAILABLE';
+  readonly requestUrl: string;
+
+  constructor(requestUrl: string) {
+    super('Network unavailable: no active Wi-Fi or mobile data connection');
+    this.name = 'NetworkUnavailableError';
+    this.requestUrl = requestUrl;
+  }
+}
+
 function isAbsoluteHttpUrl(url: string) {
   return /^https?:\/\//i.test(url);
+}
+
+function getRuntimeOrigin(): string | null {
+  if (typeof window === 'undefined') return null;
+  const origin = window.location?.origin;
+  return origin && origin !== 'null' ? origin : null;
+}
+
+function resolveHttpUrl(url: string): URL | null {
+  try {
+    const origin = getRuntimeOrigin();
+    return new URL(url, origin ? `${origin}/` : 'http://localhost/');
+  } catch {
+    return null;
+  }
+}
+
+function isApiPath(pathname: string): boolean {
+  return pathname === '/api' || pathname.startsWith('/api/');
+}
+
+function isOfflineCapableLocalApi(pathname: string): boolean {
+  return (
+    pathname === '/api/preview/office' ||
+    pathname.startsWith('/api/preview/office/') ||
+    pathname === '/api/sdcard' ||
+    pathname.startsWith('/api/sdcard/')
+  );
+}
+
+function requestNeedsNetwork(url: string, forceGateway: boolean): boolean {
+  if (forceGateway) return true;
+  const resolved = resolveHttpUrl(url);
+  if (!resolved || (resolved.protocol !== 'http:' && resolved.protocol !== 'https:')) return false;
+
+  const origin = getRuntimeOrigin();
+  if (origin && resolved.origin !== origin) return true;
+  if (!origin && isAbsoluteHttpUrl(url) && resolved.origin !== 'http://localhost') return true;
+  return isApiPath(resolved.pathname) && !isOfflineCapableLocalApi(resolved.pathname);
+}
+
+function hasUsableNetworkTransport(): boolean {
+  const state = useOsStateStore.getState();
+  const wifiConnected =
+    state.settings.global.wifiEnabled &&
+    Boolean(state.hardware.wifi.connectedSsid) &&
+    state.hardware.wifi.level > 0;
+  const cellularConnected =
+    !state.settings.global.airplaneModeEnabled &&
+    state.settings.global.mobileDataEnabled &&
+    !state.hardware.cellular.noSim &&
+    state.hardware.cellular.signalLevel > 0 &&
+    state.hardware.cellular.mobileDataType !== 'none';
+  return wifiConnected || cellularConnected;
+}
+
+function assertNetworkAvailable(url: string, forceGateway: boolean): void {
+  if (!requestNeedsNetwork(url, forceGateway)) return;
+  if (!hasUsableNetworkTransport()) throw new NetworkUnavailableError(url);
 }
 
 function normalizeInput(input: RequestInfo | URL) {
@@ -115,13 +188,20 @@ async function gatewayProxy(url: string, init: NetFetchOptions = {}) {
  */
 export async function netFetch(input: RequestInfo | URL, init: NetFetchOptions = {}) {
   const url = normalizeInput(input);
+  assertNetworkAvailable(url, Boolean(init.forceGateway));
 
   // If already routed to gateway explicitly, don't wrap again.
   if (url.startsWith('/api/gw/')) {
     return fetch(url, init);
   }
 
-  if (init.forceGateway || isAbsoluteHttpUrl(url)) {
+  const resolved = resolveHttpUrl(url);
+  const origin = getRuntimeOrigin();
+  const isCrossOriginHttp =
+    Boolean(resolved && (resolved.protocol === 'http:' || resolved.protocol === 'https:')) &&
+    (origin ? resolved!.origin !== origin : isAbsoluteHttpUrl(url));
+
+  if (init.forceGateway || isCrossOriginHttp) {
     const bodyAny = init.body as any;
     // Use proxy tunnel for non-string bodies to preserve streaming compatibility.
     if (bodyAny != null && typeof bodyAny !== 'string') {

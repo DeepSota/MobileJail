@@ -13,6 +13,8 @@ import type {
   AlipayTransferRecord,
 } from './types';
 import { enrichTransferRecord } from './utils/bills';
+import type { FileRefV1 } from '@/os/types/fileShare';
+import { resolveAlipayStateStrings } from './utils/stateStrings';
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -170,6 +172,7 @@ export interface AlipayActions {
   setPaymentPassword: (oldPwd: string | null, newPwd: string) => { ok: boolean; reason?: string };
   sendChatMessage: (conversationId: string, text: string) => void;
   sendImages: (conversationId: string, imageUris: string[]) => void;
+  sendSharedFiles: (conversationId: string, files: FileRefV1[]) => boolean;
   markConversationRead: (conversationId: string) => void;
   markAllConversationsRead: () => void;
   addBillSearchHistory: (keyword: string) => void;
@@ -214,7 +217,7 @@ const initialState: AlipayStoreState = {
  * - 更新 conversations 中对应项的 lastContent/lastTimestamp/lastReadAt（若不存在则创建）
  */
 function appendMessageToConversationState(
-  state: { chatHistory: Record<string, ChatMessage[]>; conversations: ConversationItem[]; contacts: any[] },
+  state: Pick<AlipayStoreState, 'chatHistory' | 'conversations' | 'contacts' | 'language'>,
   conversationId: string,
   lastContent: string,
   msgTimestamp: number,
@@ -233,11 +236,12 @@ function appendMessageToConversationState(
   } else {
     const contactId = conversationId.replace('conv_p_', '');
     const contact = state.contacts.find(c => String(c.id) === contactId);
+    const stateStrings = resolveAlipayStateStrings(state.language);
     nextConversations = [{
       id: conversationId,
       kind: 'person' as const,
       contactId,
-      name: contact?.name ?? 'Unknown',
+      name: contact?.name ?? stateStrings.chat_unknown_contact,
       avatar: contact?.avatar ?? '',
       lastContent,
       lastTimestamp: msgTimestamp,
@@ -547,6 +551,7 @@ export const useAlipayStore = createAppStoreWithActions<AlipayStoreState, Alipay
       const picked = imageUris.filter(Boolean);
       if (picked.length === 0) return;
       const s = get();
+      const stateStrings = resolveAlipayStateStrings(s.language);
       const baseTs = TimeService.now();
       let lastContent = '[图片]';
       const outgoingMessages: ChatMessage[] = picked.map((uri, index) => {
@@ -576,7 +581,7 @@ export const useAlipayStore = createAppStoreWithActions<AlipayStoreState, Alipay
           id: conversationId,
           kind: 'person' as const,
           contactId,
-          name: contact?.name ?? 'Unknown',
+          name: contact?.name ?? stateStrings.chat_unknown_contact,
           avatar: contact?.avatar ?? '',
           lastContent,
           lastTimestamp: baseTs,
@@ -584,6 +589,63 @@ export const useAlipayStore = createAppStoreWithActions<AlipayStoreState, Alipay
         }, ...s.conversations];
       }
       set({ conversations: nextConversations, chatHistory: history });
+    },
+
+    sendSharedFiles: (conversationId, files) => {
+      if (files.length === 0) return false;
+      const s = get();
+      const existingConversation = s.conversations.find((conversation) => conversation.id === conversationId);
+      const contactId = conversationId.startsWith('conv_p_')
+        ? conversationId.slice('conv_p_'.length)
+        : '';
+      const contact = contactId
+        ? s.contacts.find((item) => String(item.id) === contactId)
+        : undefined;
+      // The recipient list may change while private files are being copied.
+      // Commit only to a still-existing person conversation/contact.
+      if ((existingConversation && existingConversation.kind !== 'person')
+        || (!existingConversation && !contact)) return false;
+
+      const stateStrings = resolveAlipayStateStrings(s.language);
+      const baseTs = TimeService.now();
+      const outgoingMessages: ChatMessage[] = files.map((file, index) => ({
+        id: `cm_${baseTs + index}_file_${Math.random().toString(16).slice(2, 8)}`,
+        senderId: 'self',
+        type: file.mimeType.startsWith('image/') ? 'image' : 'file',
+        content: file.name,
+        timestamp: baseTs + index,
+        fileRef: file,
+      }));
+      const history = {
+        ...s.chatHistory,
+        [conversationId]: [...(s.chatHistory[conversationId] || []), ...outgoingMessages],
+      };
+      const lastFile = files[files.length - 1];
+      const idx = s.conversations.findIndex((conversation) => conversation.id === conversationId);
+      let conversations: ConversationItem[];
+      if (idx >= 0) {
+        const current = s.conversations[idx];
+        const updated: ConversationItem = {
+          ...current,
+          lastContent: lastFile.name,
+          lastTimestamp: baseTs + files.length - 1,
+          lastReadAt: baseTs + files.length - 1,
+        };
+        conversations = [updated, ...s.conversations.filter((_, index) => index !== idx)];
+      } else {
+        conversations = [{
+          id: conversationId,
+          kind: 'person',
+          contactId,
+          name: contact?.name ?? stateStrings.chat_unknown_contact,
+          avatar: contact?.avatar ?? '',
+          lastContent: lastFile.name,
+          lastTimestamp: baseTs + files.length - 1,
+          lastReadAt: baseTs + files.length - 1,
+        }, ...s.conversations];
+      }
+      set({ conversations, chatHistory: history });
+      return true;
     },
 
     markConversationRead: (conversationId) => {

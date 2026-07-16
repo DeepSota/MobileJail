@@ -2,7 +2,9 @@ import ContentProvider from '../ContentProvider';
 import ContentResolver from '../ContentResolver';
 import { createOsStore } from '../createOsStore';
 import * as TimeService from '../TimeService';
+import { isFileRefV1 } from '../FileShareService';
 import type { ContentUri, ContentValues, Cursor } from '../types/content';
+import type { FileRefV1 } from '../types/fileShare';
 import type {
   AttachmentType,
   DraftInput,
@@ -11,7 +13,7 @@ import type {
   MailFolder,
   MailMessage,
   RealFolderId,
-} from '../../system/Mail/types';
+} from '../../apps/Mail/types';
 import mailDefaults from './defaults/mail.json';
 
 export interface MailProviderState {
@@ -55,17 +57,24 @@ function asStringArray(v: any): string[] {
   return v.map((x) => String(x ?? '').trim()).filter((x) => x.length > 0);
 }
 
-function asAttachments(v: any, messageId: string): Array<Omit<MailAttachment, 'id' | 'messageId'>> {
+function asFileRef(value: unknown): FileRefV1 | undefined {
+  return isFileRefV1(value) ? structuredClone(value) : undefined;
+}
+
+function asAttachments(v: any): Array<Omit<MailAttachment, 'id' | 'messageId'>> {
   if (!Array.isArray(v)) return [];
   return v
     .filter((x) => x && typeof x === 'object')
-    .map((x) => ({
-      name: typeof x.name === 'string' ? x.name : 'untitled',
-      type: (typeof x.type === 'string' ? x.type : 'other') as AttachmentType,
-      mimeType: typeof x.mimeType === 'string' ? x.mimeType : 'application/octet-stream',
-      size: typeof x.size === 'number' ? x.size : 0,
-      ...(typeof x.uri === 'string' ? { uri: x.uri } : {}),
-    }));
+    .map((x) => {
+      const fileRef = asFileRef(x.fileRef);
+      return {
+        name: typeof x.name === 'string' ? x.name : 'untitled',
+        type: (typeof x.type === 'string' ? x.type : 'other') as AttachmentType,
+        mimeType: typeof x.mimeType === 'string' ? x.mimeType : 'application/octet-stream',
+        size: typeof x.size === 'number' ? x.size : 0,
+        ...(fileRef ? { uri: fileRef.uri, fileRef } : (typeof x.uri === 'string' ? { uri: x.uri } : {})),
+      };
+    });
 }
 
 function realFolderList(): ReadonlyArray<RealFolderId> {
@@ -170,7 +179,7 @@ export class MailProvider extends ContentProvider {
       };
       (useMailProviderStore.setState as any)((state: MailProviderState) => {
         state.messages = [msg, ...state.messages];
-        const newAttachments = asAttachments(values.attachments, id).map((a) => ({
+        const newAttachments = asAttachments(values.attachments).map((a) => ({
           ...a,
           id: randomId('att'),
           messageId: id,
@@ -184,6 +193,7 @@ export class MailProvider extends ContentProvider {
       const messageId = String(parsed.query.get('message') ?? values.messageId ?? '').trim();
       if (!messageId) throw new Error('[MailProvider] messageId is required when inserting an attachment');
       const id = randomId('att');
+      const fileRef = asFileRef(values.fileRef);
       const att: MailAttachment = {
         id,
         messageId,
@@ -191,7 +201,9 @@ export class MailProvider extends ContentProvider {
         type: (typeof values.type === 'string' ? values.type : 'other') as AttachmentType,
         mimeType: typeof values.mimeType === 'string' ? values.mimeType : 'application/octet-stream',
         size: typeof values.size === 'number' ? values.size : 0,
-        ...(typeof values.uri === 'string' ? { uri: values.uri } : {}),
+        ...(fileRef
+          ? { uri: fileRef.uri, fileRef }
+          : (typeof values.uri === 'string' ? { uri: values.uri } : {})),
       };
       (useMailProviderStore.setState as any)((state: MailProviderState) => {
         state.attachments = [...state.attachments, att];
@@ -292,7 +304,7 @@ if (import.meta.hot) {
   });
 }
 
-// --- Free-function mutators consumed by system/Mail/state.ts ---
+// --- Free-function mutators consumed by apps/Mail/state.ts ---
 
 /** Save (create or update) a draft. Returns the draft message id. */
 export function saveDraft(input: DraftInput): string {

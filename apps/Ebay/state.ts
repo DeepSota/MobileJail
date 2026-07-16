@@ -7,6 +7,16 @@ type ThemeId = 'light' | 'dark' | 'battery' | 'system';
 type SortOptionType = 'bestMatch' | 'priceLow' | 'priceHigh' | 'endingSoon' | 'newlyListed' | 'distance';
 type BuyingFormat = 'all' | 'auction' | 'buyItNow' | 'offer';
 
+export type EbayAccount = {
+  username: string;
+  password: string;
+  displayName: string;
+};
+
+export type EbayLoginResult =
+  | { ok: true }
+  | { ok: false; reason: 'missing_username' | 'missing_password' | 'no_account' | 'wrong_password' };
+
 export type EbaySearchSnapshot = {
   id: string;
   query: string;
@@ -29,6 +39,14 @@ type EbaySearchCurrent = Omit<EbaySearchSnapshot, 'id'>;
 // ---- State & Actions interfaces ----
 
 interface EbayState {
+  user: {
+    name: string;
+    username: string | null;
+    isLoggedIn: boolean;
+  };
+  auth: {
+    accounts: EbayAccount[];
+  };
   recentSearches: typeof EBAY_CONFIG.recentSearches;
   settings: {
     themeId: ThemeId;
@@ -47,17 +65,28 @@ interface EbayState {
 }
 
 interface EbayActions {
+  login: (username: string, password: string) => EbayLoginResult;
+  logout: () => void;
   addRecentSearch: (query: string) => void;
   clearRecentSearches: () => void;
   updateSettings: (patch: Partial<EbayState['settings']>) => void;
   setSearchCurrent: (patch: Partial<EbaySearchCurrent>) => void;
   recordSearchSnapshot: () => void;
+  toggleSaveItem: (item: any) => void;
 }
 
 // ---- Store ----
 
 const initialState: EbayState = {
   ...EBAY_CONFIG,
+  user: {
+    name: EBAY_CONFIG.user.name,
+    username: EBAY_CONFIG.user.username,
+    isLoggedIn: EBAY_CONFIG.user.isLoggedIn,
+  },
+  auth: {
+    accounts: EBAY_CONFIG.auth.accounts.map(account => ({ ...account })),
+  },
   recentSearches: EBAY_CONFIG.recentSearches,
   settings: {
     themeId: (EBAY_CONFIG.settings?.themeId as ThemeId) ?? 'system',
@@ -73,6 +102,38 @@ export const useEbayStore = createAppStoreWithActions<EbayState, EbayActions>(
   'ebay',
   initialState,
   (set, get) => ({
+    login: (username, password) => {
+      const normalizedUsername = username.trim();
+      const normalizedPassword = password.trim();
+      if (!normalizedUsername) return { ok: false, reason: 'missing_username' };
+      if (!normalizedPassword) return { ok: false, reason: 'missing_password' };
+
+      const account = get().auth.accounts.find(item => item.username === normalizedUsername);
+      if (!account) return { ok: false, reason: 'no_account' };
+      if (account.password !== normalizedPassword) return { ok: false, reason: 'wrong_password' };
+
+      set(state => ({
+        user: {
+          ...state.user,
+          name: account.displayName,
+          username: account.username,
+          isLoggedIn: true,
+        },
+      }));
+      return { ok: true };
+    },
+
+    logout: () => {
+      set(state => ({
+        user: {
+          ...state.user,
+          name: EBAY_CONFIG.user.name,
+          username: null,
+          isLoggedIn: false,
+        },
+      }));
+    },
+
     addRecentSearch: (query: string) => {
       const q = query.trim();
       if (!q) return;
@@ -125,6 +186,17 @@ export const useEbayStore = createAppStoreWithActions<EbayState, EbayActions>(
             lastCompare: newLastCompare,
           },
         };
+      });
+    },
+
+    toggleSaveItem: (item: any) => {
+      set(state => {
+        const saved = state.savedItems ?? [];
+        const exists = saved.some((s: any) => s.id === item.id);
+        if (exists) {
+          return { savedItems: saved.filter((s: any) => s.id !== item.id) };
+        }
+        return { savedItems: [...saved, item] };
       });
     },
   }),

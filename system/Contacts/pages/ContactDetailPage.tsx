@@ -7,7 +7,7 @@ import { SymbolIcon } from '../components/SymbolIcon';
 import { CONTACTS_CONFIG } from '../data';
 import { useContactsGestures } from '../hooks/useContactsGestures';
 import { deleteContact, recordLastContacted, toggleStarred, useContact } from '../state';
-import { ChevronRightIcon, IcSymbolBack, IcSymbolDelete, IcSymbolFavorites, IcSymbolFavoritesFill, IcSymbolMessages, IcSymbolMore, IcSymbolPhone } from '../res/icons';
+import { ChevronRightIcon, IcSymbolBack, IcSymbolDelete, IcSymbolFavorites, IcSymbolFavoritesFill, IcSymbolMessages, IcSymbolPhone } from '../res/icons';
 import { strings } from '../res/strings';
 import { stringsEn } from '../res/strings.en';
 import { localizeContactLabel } from '../utils/localizedText';
@@ -36,7 +36,7 @@ export const ContactDetailPage: React.FC = () => {
   const locale = useLocale();
   const isEnglish = locale === 'en';
   const { contactId } = useParams<{ contactId: string }>();
-  const { bindBack, go, back } = useContactsGestures();
+  const { bindBack, bindTap, go, back } = useContactsGestures();
   const s = useAppStrings(strings, stringsEn);
   const contact = useContact(contactId);
 
@@ -109,11 +109,11 @@ export const ContactDetailPage: React.FC = () => {
           </button>
           <button
             type="button"
-            aria-label={isEnglish ? 'More' : '更多'}
-            className="w-10 h-10 rounded-full flex items-center justify-center active:bg-black/5"
-            onClick={() => showToast(isEnglish ? 'More actions are not implemented yet' : '更多（未实现）')}
+            aria-label={isEnglish ? 'Edit' : '编辑'}
+            className="px-3 h-8 rounded-full bg-app-surface flex items-center justify-center active:bg-black/5"
+            {...bindTap<HTMLButtonElement>('contact.edit', { params: { contactId: contact.id } })}
           >
-            <SymbolIcon name={IcSymbolMore} size={20} className="text-gray-700" />
+            <span className="text-[14px] font-semibold text-blue-500">{s.edit}</span>
           </button>
         </div>
       </div>

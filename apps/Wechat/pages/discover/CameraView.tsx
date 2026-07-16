@@ -5,6 +5,7 @@ import { IcClose, IcRefresh } from '../../res/icons';
 import { useWechatStore } from '../../state';
 import { useWechatGestures } from '../../hooks/useWechatGestures';
 import { useWechatStrings } from '../../hooks/useWechatStrings';
+import { SensorPrivacyService } from '../../../../os/SensorPrivacyService';
 
 export const CameraView: React.FC = () => {
     const t = useWechatStrings();
@@ -12,26 +13,29 @@ export const CameraView: React.FC = () => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const updateMomentDraft = useWechatStore(s => s.updateMomentDraft);
-    const [stream, setStream] = useState<MediaStream | null>(null);
+    const [cameraUnavailable, setCameraUnavailable] = useState(false);
 
     useEffect(() => {
+        let activeStream: MediaStream | null = null;
         async function startCamera() {
             try {
-                const s = await navigator.mediaDevices.getUserMedia({ 
+                const s = await SensorPrivacyService.getUserMedia({
                     video: { facingMode: 'user' }, 
                     audio: false 
-                });
-                setStream(s);
+                }, 'wechat');
+                activeStream = s;
                 if (videoRef.current) videoRef.current.srcObject = s;
             } catch (err) {
                 console.error("Camera access denied", err);
+                setCameraUnavailable(true);
             }
         }
         startCamera();
-        return () => stream?.getTracks().forEach(t => t.stop());
+        return () => activeStream?.getTracks().forEach(track => track.stop());
     }, []);
 
     const takePhoto = () => {
+        if (cameraUnavailable) return;
         if (videoRef.current && canvasRef.current) {
             const video = videoRef.current;
             const canvas = canvasRef.current;
@@ -49,6 +53,11 @@ export const CameraView: React.FC = () => {
     return (
         <div className="absolute inset-0 bg-black z-[110] flex flex-col" data-status-bar-foreground="light">
             <video ref={videoRef} autoPlay playsInline className="flex-1 object-cover w-full" />
+            {cameraUnavailable ? (
+                <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 rounded-2xl bg-black/70 px-5 py-4 text-center text-sm text-white">
+                    {t.camera_unavailable}
+                </div>
+            ) : null}
             <canvas ref={canvasRef} className="hidden" />
             
             <button {...bindBack<HTMLButtonElement>()} className="absolute top-6 left-6 text-white active:opacity-60">
@@ -59,9 +68,10 @@ export const CameraView: React.FC = () => {
                 <div className="px-6 text-center text-(--app-settings-group-title-size) opacity-80 tracking-wide text-white break-words [overflow-wrap:anywhere]">{t.camera_hint}</div>
                 <div className="flex items-center justify-between w-full px-16">
                     <div className="w-8"></div> {/* Placeholder */}
-                    <div 
+                    <div
                         {...bindTap<HTMLDivElement>('camera.editImage.open', { onTrigger: takePhoto })}
-                        className="w-(--app-item-width-84) h-(--app-item-height-84) rounded-full border-[6px] border-white/30 flex items-center justify-center active:scale-95" style={{ transition: 'transform var(--app-duration-short) var(--app-easing-standard)' }}
+                        aria-disabled={cameraUnavailable}
+                        className={`w-(--app-item-width-84) h-(--app-item-height-84) rounded-full border-[6px] border-white/30 flex items-center justify-center ${cameraUnavailable ? 'opacity-35' : 'active:scale-95'}`} style={{ transition: 'transform var(--app-duration-short) var(--app-easing-standard)' }}
                     >
                         <div className="w-(--app-card-width-60) h-(--app-item-height-60) bg-app-surface rounded-full"></div>
                     </div>

@@ -21,7 +21,7 @@ const WORKSPACE_ROOT = process.cwd();
 function usage() {
   console.log(`
 Usage:
-  node scripts/check_navigation_declaration_consistency.mjs WechatReading
+  node scripts/check_navigation_declaration_consistency.mjs <AppName|AppPath>
 
 Options:
   --json   Output JSON only
@@ -43,6 +43,26 @@ function parseArgs(argv) {
 
 function readText(filePath) {
   return fs.readFileSync(filePath, 'utf8');
+}
+
+function resolveAppDir(appArg) {
+  const candidates = [
+    path.resolve(WORKSPACE_ROOT, appArg),
+    path.resolve(WORKSPACE_ROOT, 'apps', appArg),
+    path.resolve(WORKSPACE_ROOT, 'system', appArg),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(path.join(candidate, 'navigation.declaration.ts'))) {
+      return candidate;
+    }
+  }
+
+  throw new Error(
+    `navigation.declaration.ts not found for "${appArg}". Tried:\n${candidates
+      .map(candidate => ` - ${path.join(candidate, 'navigation.declaration.ts')}`)
+      .join('\n')}`,
+  );
 }
 
 function listFilesRecursive(dir, { exts, ignoreDirs }) {
@@ -1246,11 +1266,8 @@ async function main() {
     process.exit(2);
   }
 
-  const appDir = path.join(WORKSPACE_ROOT, 'apps', appName);
+  const appDir = resolveAppDir(appName);
   const navDeclPath = path.join(appDir, 'navigation.declaration.ts');
-  if (!fs.existsSync(navDeclPath)) {
-    throw new Error(`navigation.declaration.ts not found: ${navDeclPath}`);
-  }
 
   const nav = extractNavDeclaration(navDeclPath);
   const navUsages = extractTransitionUsages(appDir, new Set(nav.transitions.keys()));
@@ -1305,4 +1322,3 @@ main().catch(err => {
   console.error(err?.stack || String(err));
   process.exit(1);
 });
-

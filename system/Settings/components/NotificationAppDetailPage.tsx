@@ -13,6 +13,7 @@ import type { AppManifest } from '../../../os/types/manifest';
 import { strings } from '../res/strings';
 import { stringsEn } from '../res/strings.en';
 import { useAppStrings } from '@/os/useAppStrings';
+import { useSettingsGestures } from '../hooks/useSettingsGestures';
 function prefKey(appId: string, field: string): string {
   return `notif.app.${appId}.${field}`;
 }
@@ -26,16 +27,23 @@ const SwitchRow: React.FC<{
   onChanged?: (next: boolean) => void;
 }> = ({ title, summary, settingKey, defaultChecked = false, showDivider = true, onChanged }) => {
   const [checked, setChecked] = useBooleanPreference(settingKey, defaultChecked);
+  const { bindTap } = useSettingsGestures();
 
   return (
     <div>
       <div
         className="flex items-center px-4 py-3.5 active:bg-gray-50 min-h-(--app-preference-item-min-height)"
-        onClick={() => {
-          const next = !checked;
-          setChecked(next);
-          onChanged?.(next);
-        }}
+        {...bindTap<HTMLDivElement>(
+          { kind: 'action', id: 'settings.notification.preference.toggle' },
+          {
+            params: { key: settingKey, to: !checked },
+            onTrigger: () => {
+              const next = !checked;
+              setChecked(next);
+              onChanged?.(next);
+            },
+          },
+        )}
       >
         <div className="flex-1 min-w-0">
           <div className="text-[15px] text-app-text leading-tight">{title}</div>
@@ -63,6 +71,7 @@ const SwitchRow: React.FC<{
 
 export const NotificationAppDetailPage: React.FC<{ appId: string }> = ({ appId }) => {
   const s = useAppStrings(strings, stringsEn);
+  const { bindTap } = useSettingsGestures();
   const manifest = (isValidAppId(appId) ? getAppManifest(appId) : undefined) as AppManifest | undefined;
   const resolvedAppId = (isValidAppId(appId) ? (appId as AppId) : null);
 
@@ -98,7 +107,11 @@ export const NotificationAppDetailPage: React.FC<{ appId: string }> = ({ appId }
   return (
     <div className="h-full bg-app-bg flex flex-col">
         <SettingsHeader title={s.app_notifications} />
-      <div className="flex-1 overflow-y-auto no-scrollbar pb-8">
+      <div
+        className="flex-1 overflow-y-auto no-scrollbar pb-8"
+        data-scroll-container="main"
+        data-scroll-direction="vertical"
+      >
         <div className="px-4 pt-3 pb-2 flex items-center gap-3">
           <AppIcon manifest={manifest} size={42} radius={12} showShadow />
           <div className="min-w-0">
@@ -130,10 +143,16 @@ export const NotificationAppDetailPage: React.FC<{ appId: string }> = ({ appId }
             summary={s.remove_this_apps_notifications_from_the}
             showChevron={false}
             showDivider={false}
-            onClick={() => {
-              NotificationService.clearForApp(resolvedAppId);
-              showToast(s.cleared);
-            }}
+            itemProps={bindTap<HTMLDivElement>(
+              { kind: 'action', id: 'settings.notification.clear' },
+              {
+                params: { appId: resolvedAppId },
+                onTrigger: () => {
+                  NotificationService.clearForApp(resolvedAppId);
+                  showToast(s.cleared);
+                },
+              },
+            )}
           />
         </PreferenceCategory>
 
@@ -170,16 +189,22 @@ export const NotificationAppDetailPage: React.FC<{ appId: string }> = ({ appId }
             summary={s.for_testing_notification_toggle_badge_sync}
             showChevron={false}
             showDivider={false}
-            onClick={() => {
-              NotificationService.push({
-                appId: resolvedAppId,
-                title: resolvedAppId ? getLocalizedAppName(resolvedAppId) : manifest.displayName,
-                body: s.this_is_a_test_notification,
-                importance: 'default',
-                read: false,
-              });
-              showToast(s.sent);
-            }}
+            itemProps={bindTap<HTMLDivElement>(
+              { kind: 'action', id: 'settings.notification.test.submit' },
+              {
+                params: { appId: resolvedAppId },
+                onTrigger: () => {
+                  NotificationService.push({
+                    appId: resolvedAppId,
+                    title: resolvedAppId ? getLocalizedAppName(resolvedAppId) : manifest.displayName,
+                    body: s.this_is_a_test_notification,
+                    importance: 'default',
+                    read: false,
+                  });
+                  showToast(s.sent);
+                },
+              },
+            )}
           >
             <IcNavForward size={16} className="text-gray-300 opacity-0" />
           </PreferenceItem>

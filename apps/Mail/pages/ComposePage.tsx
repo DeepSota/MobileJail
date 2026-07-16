@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { IcNavBack, IcPaperclip, IcSend, IcAt, ICON_REGISTRY, IcImage, IcFile } from '../res/icons';
+import { IcNavBack, IcPaperclip, IcSend, IcImage, IcFile } from '../res/icons';
 import {
   getMessage,
   getAttachments,
   saveDraft,
   sendMessage,
-  extractEmailAddress,
+  deleteMessageForever,
   isValidEmail,
   invalidateMailSnapshot,
 } from '../state';
@@ -19,8 +19,18 @@ import { useAppStrings } from '@/os/useAppStrings';
 import { strings } from '../res/strings';
 import { stringsEn } from '../res/strings.en';
 import * as MediaService from '../../../os/MediaService';
-import * as FileSystem from '../../../os/FileSystemService';
+import {
+  createFileRef,
+  hasFileShareIntentData,
+  parseIntent as parseFileShareIntent,
+  rollbackPrivateAttachments,
+} from '../../../os/FileShareService';
+import { useActivityBackBlocker } from '../../../os/hooks/useActivityBackBlocker';
+import type { FileRefV1 } from '../../../os/types/fileShare';
 import type { AttachmentType } from '../types';
+import { takeExternalComposeIntent } from '../utils/externalComposeIntent';
+import { materializeMailAttachmentsWithCopies } from '../utils/materializeAttachments';
+import { appendPickedRecipient, parseRecipientList } from '../utils/recipients';
 
 interface LocalAttachment {
   tempId: string;
@@ -29,6 +39,7 @@ interface LocalAttachment {
   mimeType: string;
   size: number;
   uri?: string;
+  fileRef?: FileRefV1;
 }
 
 type ErrorDialog = null | 'invalid' | 'empty';
@@ -37,14 +48,6 @@ let tempCounter = 0;
 function nextTempId(): string {
   tempCounter += 1;
   return `local_${tempCounter}`;
-}
-
-function parseRecipients(input: string): string[] {
-  return input
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map(extractEmailAddress);
 }
 
 function parseMailto(url: string): { to: string; subject: string; body: string; cc: string } {
@@ -66,7 +69,7 @@ export const ComposePage: React.FC = () => {
   const s = useAppStrings(strings, stringsEn);
   const { draftId } = useParams<{ draftId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { go, back, navigateTo } = useMailGestures();
+  const { go, back } = useMailGestures();
   const { activityId } = useActivityContext();
 
   const [to, setTo] = useState('');
@@ -80,41 +83,33 @@ export const ComposePage: React.FC = () => {
   const [errorDialog, setErrorDialog] = useState<ErrorDialog>(null);
   const [unsavedDialog, setUnsavedDialog] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
 
   const initialized = useRef(false);
+  const submissionInFlight = useRef(false);
+  useActivityBackBlocker('mail.compose.commit', sending);
 
   // File browser overlay driven by searchParam: ?selectFile=document|audio|other
   const fileBrowserType = searchParams.get('selectFile') as AttachmentType | null;
   const showFileBrowser = !!fileBrowserType;
+  const replyId = searchParams.get('replyId');
+  const forwardId = searchParams.get('forwardId');
 
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
 
-    // 1. Intent payload (ACTION_VIEW mailto / ACTION_SEND)
-    const os = window.__OS__;
-    const payload = os?.getIntentPayload?.(activityId) ?? os?.getIntentPayload?.('mail');
-    if (payload) {
-      const data = (payload as { data?: unknown })?.data;
-      if (typeof data === 'string' && data.startsWith('mailto:')) {
-        const m = parseMailto(data);
-        if (m.to) setTo(m.to);
-        if (m.subject) setSubject(m.subject);
-        if (m.body) setBody(m.body);
-        if (m.cc) { setCc(m.cc); setCcVisible(true); }
-        return;
-      }
-      if (data && typeof data === 'object') {
-        const obj = data as Record<string, unknown>;
-        if (typeof obj.to === 'string') setTo(obj.to);
-        if (typeof obj.subject === 'string') setSubject(obj.subject);
-        if (typeof obj.body === 'string') setBody(obj.body);
-        if (typeof obj.cc === 'string') { setCc(obj.cc); setCcVisible(true); }
-        return;
-      }
-    }
+    // Read only this Activity's Intent. App-id fallback can return a stale
+    // Intent from another Activity and must never seed an internal compose.
+    const activityIntent = window.__OS__?.getIntentPayload?.(activityId) ?? null;
+    const externalIntent = takeExternalComposeIntent(activityIntent, {
+      activityId,
+      draftId,
+      replyId,
+      forwardId,
+    });
 
-    // 2. Edit existing draft
+    // 1. Internal routes always win and discard any stale Activity Intent.
     if (draftId) {
       const msg = getMessage(draftId);
       if (msg) {
@@ -134,6 +129,7 @@ export const ComposePage: React.FC = () => {
               mimeType: a.mimeType,
               size: a.size,
               ...(a.uri ? { uri: a.uri } : {}),
+              ...(a.fileRef ? { fileRef: a.fileRef } : {}),
             })),
           );
         }
@@ -141,8 +137,7 @@ export const ComposePage: React.FC = () => {
       return;
     }
 
-    // 3. Reply
-    const replyId = searchParams.get('replyId');
+    // 2. Reply never inherits attachments from an earlier external share.
     if (replyId) {
       const msg = getMessage(replyId);
       if (msg) {
@@ -157,8 +152,7 @@ export const ComposePage: React.FC = () => {
       return;
     }
 
-    // 4. Forward
-    const forwardId = searchParams.get('forwardId');
+    // 3. Forward keeps the quoted body but does not implicitly copy files.
     if (forwardId) {
       const msg = getMessage(forwardId);
       if (msg) {
@@ -172,6 +166,55 @@ export const ComposePage: React.FC = () => {
       }
       return;
     }
+
+    // 4. Only the plain externally-launched /compose entry consumes Intent.
+    if (externalIntent) {
+      const data = (externalIntent as { data?: unknown }).data;
+      const obj = data && typeof data === 'object'
+        ? data as Record<string, unknown>
+        : null;
+      const mailtoUrl = typeof data === 'string'
+        ? data
+        : (typeof obj?.uri === 'string' ? obj.uri : '');
+      if (mailtoUrl.startsWith('mailto:')) {
+        const m = parseMailto(mailtoUrl);
+        if (m.to) setTo(m.to);
+        if (m.subject) setSubject(m.subject);
+        if (m.body) setBody(m.body);
+        if (m.cc) { setCc(m.cc); setCcVisible(true); }
+        return;
+      }
+
+      if (obj) {
+        if (typeof obj.to === 'string') setTo(obj.to);
+        if (typeof obj.subject === 'string') setSubject(obj.subject);
+        if (typeof obj.body === 'string') setBody(obj.body);
+        if (typeof obj.cc === 'string') { setCc(obj.cc); setCcVisible(true); }
+      }
+
+      const shared = parseFileShareIntent(externalIntent);
+      if (hasFileShareIntentData(externalIntent) && !shared?.files.length) {
+        setToast(s.attachment_unavailable);
+        window.setTimeout(() => setToast(null), 2500);
+      }
+      if (shared?.files.length) {
+        setAttachments(shared.files.map((file) => ({
+          tempId: nextTempId(),
+          name: file.name,
+          type: file.mimeType.startsWith('image/')
+            ? 'image'
+            : file.mimeType.startsWith('video/')
+              ? 'video'
+              : file.mimeType.startsWith('audio/') ? 'audio' : 'document',
+          mimeType: file.mimeType,
+          size: file.size,
+          uri: file.uri,
+          fileRef: file,
+        })));
+      }
+      if (shared?.subject && typeof obj?.subject !== 'string') setSubject(shared.subject);
+      if (shared?.text && typeof obj?.body !== 'string') setBody(shared.text);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftId, searchParams, activityId]);
 
@@ -180,10 +223,10 @@ export const ComposePage: React.FC = () => {
     window.setTimeout(() => setToast((cur) => (cur === msg ? null : cur)), 2500);
   };
 
-  const addLocalAttachment = (type: AttachmentType, file: { name: string; mimeType: string; size: number; uri?: string }) => {
+  const addLocalAttachment = (type: AttachmentType, file: { name: string; mimeType: string; size: number; uri?: string; fileRef?: FileRefV1 }) => {
     setAttachments((arr) => [
       ...arr,
-      { tempId: nextTempId(), name: file.name, type, mimeType: file.mimeType, size: file.size, uri: file.uri },
+      { tempId: nextTempId(), name: file.name, type, mimeType: file.mimeType, size: file.size, uri: file.uri, fileRef: file.fileRef },
     ]);
   };
 
@@ -199,11 +242,17 @@ export const ComposePage: React.FC = () => {
       const result = await MediaService.pickMedia({ type: 'image', multiple: true, maxSelect: 9 });
       if (result.cancelled || !result.selected.length) return;
       for (const item of result.selected) {
+        const fileRef = createFileRef(item.path) ?? createFileRef(item.id) ?? createFileRef(item.uri);
+        if (!fileRef) {
+          showToast(s.compose_attachment_copy_failed);
+          continue;
+        }
         addLocalAttachment('image', {
-          name: item.name || 'photo.jpg',
-          mimeType: item.mimeType || 'image/jpeg',
-          size: item.size || 0,
-          uri: item.uri || item.path,
+          name: fileRef.name || item.name || 'photo.jpg',
+          mimeType: fileRef.mimeType || item.mimeType || 'image/jpeg',
+          size: fileRef.size || item.size || 0,
+          uri: fileRef.uri,
+          fileRef,
         });
       }
     } catch {
@@ -223,63 +272,117 @@ export const ComposePage: React.FC = () => {
 
   const handleFileSelect = (file: { path: string; name: string; size: number; mimeType: string }) => {
     const attachType = fileBrowserType || 'other';
+    const fileRef = createFileRef(file.path);
+    if (!fileRef) {
+      showToast(s.compose_attachment_copy_failed);
+      return;
+    }
     addLocalAttachment(attachType, {
-      name: file.name,
-      mimeType: file.mimeType,
-      size: file.size,
-      uri: FileSystem.getFileUri(file.path) || undefined,
+      name: fileRef.name || file.name,
+      mimeType: fileRef.mimeType || file.mimeType,
+      size: fileRef.size || file.size,
+      uri: fileRef.uri,
+      fileRef,
     });
     // Replace the ?selectFile history entry with the base compose URL to avoid a stale back-stack entry
     setSearchParams((p) => { p.delete('selectFile'); return p; }, { replace: true });
   };
 
-  const buildDraftInput = () => ({
+  const buildDraftInput = (materialized = attachments) => ({
     id: draftId,
-    to: parseRecipients(to),
-    cc: parseRecipients(cc),
+    to: parseRecipientList(to),
+    cc: parseRecipientList(cc),
     subject,
     body,
     inReplyTo,
-    attachments: attachments.map((a) => ({
+    attachments: materialized.map((a) => ({
       name: a.name,
       type: a.type,
       mimeType: a.mimeType,
       size: a.size,
       ...(a.uri ? { uri: a.uri } : {}),
+      ...(a.fileRef ? { fileRef: a.fileRef } : {}),
     })),
   });
 
-  const handleSaveDraft = () => {
-    const id = saveDraft(buildDraftInput());
-    showToast(s.compose_draft_saved_toast);
-    void id;
-    navigateTo('/', { replace: true });
+  const handleSaveDraft = async () => {
+    if (submissionInFlight.current) return;
+    submissionInFlight.current = true;
+    setSending(true);
+    const originalAttachments = attachments;
+    let createdFiles: FileRefV1[] = [];
+    let persisted = false;
+    try {
+      const result = await materializeMailAttachmentsWithCopies(attachments);
+      const materialized = result.attachments;
+      createdFiles = result.createdFiles;
+      setAttachments(materialized);
+      const id = saveDraft(buildDraftInput(materialized));
+      persisted = true;
+      showToast(s.compose_draft_saved_toast);
+      void id;
+      go('compose.saveDraft');
+    } catch {
+      if (!persisted && createdFiles.length) await rollbackPrivateAttachments(createdFiles, 'mail');
+      if (!persisted) setAttachments(originalAttachments);
+      submissionInFlight.current = false;
+      setSending(false);
+      showToast(s.compose_attachment_copy_failed);
+    }
   };
 
-  const handleSend = () => {
-    const toList = parseRecipients(to);
+  const handleSend = async () => {
+    if (submissionInFlight.current) return;
+    const toList = parseRecipientList(to);
     if (toList.length === 0 || !toList.every((addr) => isValidEmail(addr))) {
       setErrorDialog('invalid');
       return;
     }
-    if (!subject.trim() && !body.trim()) {
+    if (!subject.trim() && !body.trim() && attachments.length === 0) {
       setErrorDialog('empty');
       return;
     }
-    const id = saveDraft(buildDraftInput());
-    invalidateMailSnapshot();
-    sendMessage(id);
-    invalidateMailSnapshot();
-    showToast(s.compose_sent_toast);
-    go('compose.send', { messageId: id });
+    submissionInFlight.current = true;
+    setSending(true);
+    const originalAttachments = attachments;
+    let materialized: LocalAttachment[] = [];
+    let createdFiles: FileRefV1[] = [];
+    let persisted = false;
+    try {
+      const result = await materializeMailAttachmentsWithCopies(attachments);
+      materialized = result.attachments;
+      createdFiles = result.createdFiles;
+      setAttachments(materialized);
+      const id = saveDraft(buildDraftInput(materialized));
+      persisted = true;
+      invalidateMailSnapshot();
+      if (!sendMessage(id)) {
+        if (!draftId) {
+          deleteMessageForever(id);
+          persisted = false;
+        }
+        throw new Error('mail-send-commit-failed');
+      }
+      invalidateMailSnapshot();
+      showToast(s.compose_sent_toast);
+      go('compose.send', { messageId: id });
+    } catch {
+      if (!persisted && createdFiles.length) await rollbackPrivateAttachments(createdFiles, 'mail');
+      setAttachments(persisted ? materialized : originalAttachments);
+      submissionInFlight.current = false;
+      setSending(false);
+      showToast(s.compose_attachment_copy_failed);
+      return;
+    }
   };
 
   const handleBackPress = () => {
+    if (sending) return;
     if (showFileBrowser) {
       closeFileBrowser();
       return;
     }
-    const hasContent = to.trim() || subject.trim() || body.trim();
+    const hasContent = to.trim() || subject.trim() || body.trim() || attachments.length > 0;
     if (hasContent) {
       setUnsavedDialog(true);
     } else {
@@ -296,7 +399,9 @@ export const ComposePage: React.FC = () => {
         <button
           type="button"
           onClick={handleBackPress}
-          className="w-10 h-10 flex items-center justify-center"
+          disabled={sending}
+          aria-disabled={sending}
+          className="w-10 h-10 flex items-center justify-center disabled:opacity-40"
           aria-label={s.back}
         >
           <IcNavBack size={24} className="text-app-text" />
@@ -308,14 +413,20 @@ export const ComposePage: React.FC = () => {
           <button
             type="button"
             onClick={handleSaveDraft}
-            className="px-2 h-9 flex items-center text-[14px] text-app-primary active:opacity-70"
+            disabled={sending}
+            data-trigger="compose.saveDraft"
+            data-trigger-type="tap"
+            className="px-2 h-9 flex items-center text-[14px] text-app-primary active:opacity-70 disabled:opacity-50"
           >
             {s.compose_button_save_draft}
           </button>
           <button
             type="button"
             onClick={handleSend}
-            className="px-5 h-10 flex items-center gap-1.5 rounded-full bg-app-primary text-white text-[15px] font-medium shadow-md active:opacity-90"
+            disabled={sending}
+            data-trigger="compose.send"
+            data-trigger-type="tap"
+            className="px-5 h-10 flex items-center gap-1.5 rounded-full bg-app-primary text-white text-[15px] font-medium shadow-md active:opacity-90 disabled:opacity-50"
           >
             <IcSend size={18} />
             <span>{s.compose_button_send}</span>
@@ -330,7 +441,7 @@ export const ComposePage: React.FC = () => {
           <RecipientPicker
             value={to}
             onChange={setTo}
-            onPick={(c) => setTo(`${c.displayName} <${c.email}>`)}
+            onPick={(contact) => setTo((current) => appendPickedRecipient(current, contact))}
             placeholder={s.compose_placeholder_recipient}
           />
         </div>
@@ -340,7 +451,7 @@ export const ComposePage: React.FC = () => {
             <RecipientPicker
               value={cc}
               onChange={setCc}
-              onPick={(c) => setCc(`${c.displayName} <${c.email}>`)}
+              onPick={(contact) => setCc((current) => appendPickedRecipient(current, contact))}
               placeholder={s.compose_placeholder_recipient}
             />
             <button
@@ -392,8 +503,9 @@ export const ComposePage: React.FC = () => {
           {attachments.map((a) => (
             <AttachmentChip
               key={a.tempId}
-              attachment={{ id: a.tempId, messageId: '', name: a.name, type: a.type, mimeType: a.mimeType, size: a.size, ...(a.uri ? { uri: a.uri } : {}) }}
+              attachment={{ id: a.tempId, messageId: '', name: a.name, type: a.type, mimeType: a.mimeType, size: a.size, ...(a.uri ? { uri: a.uri } : {}), ...(a.fileRef ? { fileRef: a.fileRef } : {}) }}
               onRemove={() => handleRemoveAttachment(a.tempId)}
+              removeLabel={s.compose_remove_attachment}
             />
           ))}
         </div>
@@ -406,6 +518,9 @@ export const ComposePage: React.FC = () => {
             <button
               type="button"
               onClick={() => { setShowAttachMenu(false); handleSelectImage(); }}
+              data-action="compose.attachment.add"
+              data-action-type="tap"
+              data-action-params={JSON.stringify({ type: 'image' })}
               className="flex flex-col items-center gap-2 flex-1 py-3 rounded-xl bg-app-primary/8 active:bg-app-primary/20"
             >
               <div className="w-12 h-12 rounded-full bg-app-primary/15 flex items-center justify-center">
@@ -416,6 +531,9 @@ export const ComposePage: React.FC = () => {
             <button
               type="button"
               onClick={() => { setShowAttachMenu(false); openFileBrowser('other'); }}
+              data-action="compose.attachment.add"
+              data-action-type="tap"
+              data-action-params={JSON.stringify({ type: 'other' })}
               className="flex flex-col items-center gap-2 flex-1 py-3 rounded-xl bg-app-primary/8 active:bg-app-primary/20"
             >
               <div className="w-12 h-12 rounded-full bg-app-primary/15 flex items-center justify-center">
@@ -504,12 +622,6 @@ export const ComposePage: React.FC = () => {
           onClose={closeFileBrowser}
         />
       )}
-
-      {/* Silence unused imports */}
-      <span className="hidden" aria-hidden>
-        {IcAt ? '' : ''}
-        {Object.keys(ICON_REGISTRY).length}
-      </span>
     </div>
   );
 };

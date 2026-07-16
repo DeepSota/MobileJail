@@ -574,6 +574,9 @@ const ProductCard = ({
   shippingLabel: string;
   sponsoredLabel: string;
 }) => {
+  const store = useEbayStore();
+  const savedItems = useEbayStore(state => state.savedItems) ?? [];
+  const isSaved = savedItems.some((si: any) => si.id === product.id);
   const title = localizeEbayProductTitle(product.title, locale);
   const condition = localizeEbayConditionLabel(product.condition, locale);
   const location = product.location ? localizeEbayLocationLabel(product.location, locale) : (product.sales || '');
@@ -582,8 +585,11 @@ const ProductCard = ({
       <div className="bg-app-surface rounded-lg p-2 mb-3 shadow-sm inline-block w-[48%] mr-[2%] align-top">
         <div className="aspect-square bg-gray-100 rounded-md mb-2 relative overflow-hidden">
           <img src={product.image} className="w-full h-full object-cover" alt={title} />
-          <button className="absolute top-2 right-2 w-8 h-8 bg-white/80 rounded-full flex items-center justify-center">
-            <IcHeart size={16} className="text-black" />
+          <button
+            onClick={(e) => { e.stopPropagation(); store.toggleSaveItem(product); }}
+            className="absolute top-2 right-2 w-8 h-8 bg-white/80 rounded-full flex items-center justify-center"
+          >
+            <IcHeart size={16} className={isSaved ? 'text-red-500 fill-red-500' : 'text-black'} />
           </button>
         </div>
         <h3 className="text-sm text-black line-clamp-2 mb-1 leading-tight">{title}</h3>
@@ -599,8 +605,11 @@ const ProductCard = ({
     <div className="bg-app-surface rounded-xl p-3 mb-3 flex relative shadow-sm">
       <div className="w-36 h-36 bg-gray-100 rounded-lg flex-shrink-0 relative overflow-hidden">
         <img src={product.image} className="w-full h-full object-cover" alt={title} />
-        <button className="absolute top-2 right-2 w-7 h-7 bg-white/80 rounded-full flex items-center justify-center">
-          <IcHeart size={14} className="text-black" />
+        <button
+          onClick={(e) => { e.stopPropagation(); store.toggleSaveItem(product); }}
+          className="absolute top-2 right-2 w-7 h-7 bg-white/80 rounded-full flex items-center justify-center"
+        >
+          <IcHeart size={14} className={isSaved ? 'text-red-500 fill-red-500' : 'text-black'} />
         </button>
         <div className="absolute bottom-2 left-0 right-0 flex justify-center space-x-1">
           <div className="w-1.5 h-1.5 bg-black rounded-full"></div>

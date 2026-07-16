@@ -1,9 +1,11 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef } from 'react';
 import { PreferenceItem } from './PreferenceItem';
 import { useStringPreference } from '../state';
 import { strings } from '../res/strings';
 import { stringsEn } from '../res/strings.en';
 import { useAppStrings } from '@/os/useAppStrings';
+import { useSettingsGestures } from '../hooks/useSettingsGestures';
+import { useSettingsDialog } from '../hooks/useSettingsDialog';
 
 export const ListPreference: React.FC<{
   title: string;
@@ -23,7 +25,8 @@ export const ListPreference: React.FC<{
   onMissingOptions,
 }) => {
   const s = useAppStrings(strings, stringsEn);
-  const [open, setOpen] = useState(false);
+  const { bindTap } = useSettingsGestures();
+  const dialog = useSettingsDialog('list', settingKey);
 
   const [value, setValue] = useStringPreference(
     settingKey,
@@ -45,21 +48,18 @@ export const ListPreference: React.FC<{
         value={selectedLabel || undefined}
         showChevron={true}
         showDivider={showDivider}
-        onClick={() => {
-          if (!options.length) {
-            onMissingOptions?.();
-            return;
-          }
-          setOpen(true);
-          requestAnimationFrame(() => {
-            sheetRef.current?.focus();
-          });
-        }}
+        itemProps={options.length ? dialog.bindOpen<HTMLDivElement>() : undefined}
+        onClick={options.length ? undefined : onMissingOptions}
       />
 
-      {open && (
+      {dialog.isOpen && (
         <div className="fixed inset-0 z-[70] flex items-end justify-center px-3 pb-3">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
+          <div
+            className="absolute inset-0 bg-black/40"
+            data-trigger="system.back"
+            data-trigger-type="back"
+            onClick={dialog.close}
+          />
           <div
             ref={sheetRef}
             tabIndex={-1}
@@ -73,7 +73,11 @@ export const ListPreference: React.FC<{
                 </div>
               )}
             </div>
-            <div className="max-h-[55vh] overflow-y-auto no-scrollbar">
+            <div
+              className="max-h-[55vh] overflow-y-auto no-scrollbar"
+              data-scroll-container="options"
+              data-scroll-direction="vertical"
+            >
               {options.map((opt) => {
                 const selected = opt.value === value;
                 return (
@@ -81,10 +85,16 @@ export const ListPreference: React.FC<{
                     key={opt.value}
                     type="button"
                     className="w-full px-6 py-4 text-left text-[16px] active:bg-gray-50 flex items-center justify-between"
-                    onClick={() => {
-                      setValue(opt.value);
-                      setOpen(false);
-                    }}
+                    {...bindTap<HTMLButtonElement>(
+                      { kind: 'action', id: 'settings.preference.option.select.value' },
+                      {
+                        params: { key: settingKey, value: opt.value },
+                        onTrigger: () => {
+                          setValue(opt.value);
+                          dialog.close();
+                        },
+                      },
+                    )}
                   >
                     <span className={selected ? 'text-app-primary font-medium' : 'text-app-text'}>
                       {opt.label}
@@ -100,7 +110,9 @@ export const ListPreference: React.FC<{
               <button
                 type="button"
                 className="w-full py-3 rounded-2xl bg-gray-50 text-[16px] font-medium text-app-text active:bg-gray-100"
-                onClick={() => setOpen(false)}
+                data-trigger="system.back"
+                data-trigger-type="back"
+                onClick={dialog.close}
               >
                 {s.cancel}
               </button>
@@ -111,4 +123,3 @@ export const ListPreference: React.FC<{
     </>
   );
 };
-

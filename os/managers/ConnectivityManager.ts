@@ -27,6 +27,15 @@ const CONNECTIVITY_PREFERENCE_KEYS = [
   'data_state',
 ] as const;
 
+const AIRPLANE_RESTORE_KEYS = {
+  wifiEnabled: '__connectivity_airplane_restore_wifi_enabled',
+  mobileDataEnabled: '__connectivity_airplane_restore_mobile_data_enabled',
+  bluetoothEnabled: '__connectivity_airplane_restore_bluetooth_enabled',
+  wifiLevel: '__connectivity_airplane_restore_wifi_level',
+  cellularSignalLevel: '__connectivity_airplane_restore_cellular_signal_level',
+  mobileDataType: '__connectivity_airplane_restore_mobile_data_type',
+} as const;
+
 let lastConnectivitySignature: string | null = null;
 
 function clampInt(value: unknown, min: number, max: number, fallback: number): number {
@@ -102,7 +111,17 @@ function setMobileDataEnabled(enabled: boolean): void {
   mutateOsState((state) => {
     state.settings.global.mobileDataEnabled = enabled;
     if (!enabled && state.hardware.cellular.signalLevel > 0) {
+      if (state.hardware.cellular.mobileDataType !== 'none') {
+        state.preferences.__connectivity_mobile_data_restore_type = state.hardware.cellular.mobileDataType;
+      }
       state.hardware.cellular.mobileDataType = 'none';
+    } else if (enabled && !state.hardware.cellular.noSim) {
+      const savedType = state.preferences.__connectivity_mobile_data_restore_type;
+      state.hardware.cellular.mobileDataType = typeof savedType === 'string' && savedType !== 'none'
+        ? savedType
+        : (getDefaultSim()?.networkType || '5G');
+      if (state.hardware.cellular.signalLevel <= 0) state.hardware.cellular.signalLevel = 4;
+      delete state.preferences.__connectivity_mobile_data_restore_type;
     }
   });
   emitConnectivityChange();
@@ -117,6 +136,18 @@ function setBluetoothEnabled(enabled: boolean): void {
 
 function setAirplaneModeEnabled(enabled: boolean): void {
   mutateOsState((state) => {
+    const wasEnabled = state.settings.global.airplaneModeEnabled;
+    if (enabled === wasEnabled) return;
+
+    if (enabled) {
+      state.preferences[AIRPLANE_RESTORE_KEYS.wifiEnabled] = state.settings.global.wifiEnabled;
+      state.preferences[AIRPLANE_RESTORE_KEYS.mobileDataEnabled] = state.settings.global.mobileDataEnabled;
+      state.preferences[AIRPLANE_RESTORE_KEYS.bluetoothEnabled] = state.settings.global.bluetoothEnabled;
+      state.preferences[AIRPLANE_RESTORE_KEYS.wifiLevel] = state.hardware.wifi.level;
+      state.preferences[AIRPLANE_RESTORE_KEYS.cellularSignalLevel] = state.hardware.cellular.signalLevel;
+      state.preferences[AIRPLANE_RESTORE_KEYS.mobileDataType] = state.hardware.cellular.mobileDataType;
+    }
+
     state.settings.global.airplaneModeEnabled = enabled;
     if (enabled) {
       state.settings.global.wifiEnabled = false;
@@ -125,7 +156,37 @@ function setAirplaneModeEnabled(enabled: boolean): void {
       state.hardware.wifi.level = 0;
       state.hardware.cellular.signalLevel = 0;
       state.hardware.cellular.mobileDataType = 'none';
+      return;
     }
+
+    const savedWifiEnabled = state.preferences[AIRPLANE_RESTORE_KEYS.wifiEnabled];
+    const savedMobileDataEnabled = state.preferences[AIRPLANE_RESTORE_KEYS.mobileDataEnabled];
+    const savedBluetoothEnabled = state.preferences[AIRPLANE_RESTORE_KEYS.bluetoothEnabled];
+    const savedWifiLevel = state.preferences[AIRPLANE_RESTORE_KEYS.wifiLevel];
+    const savedSignalLevel = state.preferences[AIRPLANE_RESTORE_KEYS.cellularSignalLevel];
+    const savedMobileDataType = state.preferences[AIRPLANE_RESTORE_KEYS.mobileDataType];
+
+    if (typeof savedWifiEnabled === 'boolean') state.settings.global.wifiEnabled = savedWifiEnabled;
+    if (typeof savedMobileDataEnabled === 'boolean') state.settings.global.mobileDataEnabled = savedMobileDataEnabled;
+    if (typeof savedBluetoothEnabled === 'boolean') state.settings.global.bluetoothEnabled = savedBluetoothEnabled;
+    if (typeof savedWifiLevel === 'number') {
+      state.hardware.wifi.level = clampInt(savedWifiLevel, 0, 4, 0);
+    }
+    if (state.hardware.cellular.noSim) {
+      state.hardware.cellular.signalLevel = 0;
+      state.hardware.cellular.mobileDataType = 'none';
+    } else {
+      if (typeof savedSignalLevel === 'number') {
+        state.hardware.cellular.signalLevel = clampInt(savedSignalLevel, 0, 5, 0);
+      }
+      if (typeof savedMobileDataType === 'string') {
+        state.hardware.cellular.mobileDataType = savedMobileDataType as MobileDataType;
+      }
+    }
+
+    Object.values(AIRPLANE_RESTORE_KEYS).forEach((key) => {
+      delete state.preferences[key];
+    });
   });
   emitConnectivityChange();
 }

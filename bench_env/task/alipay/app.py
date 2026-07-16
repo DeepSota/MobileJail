@@ -890,7 +890,7 @@ class Alipay(BaseApp):
         for c in self.conversations:
             if name in str(c["name"]):
                 return c
-        raise ValueError(f"Conversation '{name}' not found in state")
+        return None
 
     def get_conversation_for_contact(self, contact_name: str) -> Optional[dict[str, Any]]:
         """Find conversation by matching contact name (supports partial match)."""

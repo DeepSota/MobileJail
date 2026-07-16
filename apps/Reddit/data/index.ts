@@ -4,6 +4,7 @@ import { SUBREDDIT_ICON_SOURCES } from './subredditIconSources';
 import { getUserAvatar, normalizeUsername } from '../utils/userIdentity';
 import { REDDIT_COMMUNITY_DEFAULTS } from '../constants';
 import type { Comment, RedditPost, RedditSettings, RedditCommunity } from '../types';
+import * as TimeService from '@/os/TimeService';
 
 const asset = (r: unknown) => {
   const s = String(r ?? '').trim();
@@ -168,7 +169,7 @@ const processUserPost = (post: any, username: string): RedditPost => ({
 });
 
 export const processPosts = (posts: any[]): RedditPost[] => {
-  const nowSec = Math.floor(Date.now() / 1000);
+  const nowSec = Math.floor(TimeService.now() / 1000);
   const normalized = posts.map(p => {
     const base = normalizeTimeAgo(p.timeAgo);
     const authorKey = p.author || p.authorId || p.id || '';

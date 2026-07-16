@@ -19,6 +19,7 @@ import type {
   WechatSubscription,
   WechatTransfer,
 } from './types';
+import type { FileRefV1 } from '../../os/types/fileShare';
 
 // --- Constants ---
 
@@ -363,6 +364,8 @@ interface WechatActions {
   sendMessage: (targetWxid: string, content: string) => void;
   sendImages: (targetWxid: string, imagePaths: string[]) => void;
   sendFiles: (targetWxid: string, files: { path: string; name: string; size: number; mimeType?: string }[]) => void;
+  sendSharedAttachments: (targetWxid: string, files: FileRefV1[]) => boolean;
+  sendSharedAttachmentsToTargets: (targetWxids: string[], files: FileRefV1[]) => boolean;
   sendLinkMessage: (targetWxid: string, link: { cover?: string; title?: string; url?: string; source?: string }) => void;
   sendPat: (targetWxid: string) => void;
   updateChatSettings: (targetWxid: string, updates: Partial<Pick<ChatSession, 'isMuted' | 'isSticky' | 'isAlert'>>) => void;
@@ -495,6 +498,50 @@ export const useWechatStore = createAppStoreWithActions<WechatState, WechatActio
         }));
 
         set({ chats: upsertChatMessages(prev, targetWxid, now, outgoingMessages) });
+      },
+
+      sendSharedAttachments(targetWxid: string, files: FileRefV1[]) {
+        return get().sendSharedAttachmentsToTargets([targetWxid], files);
+      },
+
+      sendSharedAttachmentsToTargets(targetWxids: string[], files: FileRefV1[]) {
+        const prev = get();
+        const picked = files.filter((file) => file?.fileId && file?.uri);
+        const targets = targetWxids.filter((targetWxid, index, list) => (
+          targetWxid
+          && targetWxid !== prev.user.wxid
+          && list.indexOf(targetWxid) === index
+        ));
+        if (picked.length === 0 || targets.length === 0) return false;
+
+        // Revalidate the whole recipient set before mutating any conversation.
+        // This mirrors one Android share confirmation: a stale recipient must
+        // not leave only the earlier recipients with a partially committed send.
+        const allTargetsAreCurrent = targets.every((targetWxid) => {
+          const targetChat = prev.chats.find((chat) => chat.id === targetWxid);
+          const targetContact = prev.contacts.find((contact) => contact.wxid === targetWxid);
+          return Boolean((targetChat || targetContact) && !targetContact?.isBlacklisted);
+        });
+        if (!allTargetsAreCurrent) return false;
+
+        const now = TimeService.now();
+        let chats = prev.chats;
+        targets.forEach((targetWxid, targetIndex) => {
+          const outgoingMessages: Message[] = picked.map((file, fileIndex) => ({
+            id: `attachment-${now}-${targetIndex}-${fileIndex}`,
+            type: file.mimeType.startsWith('image/') ? 'image' : 'file',
+            content: file.uri,
+            fileName: file.name,
+            fileSize: file.size,
+            mimeType: file.mimeType,
+            fileRef: file,
+            senderId: prev.user.wxid,
+            timestamp: now + fileIndex,
+          }));
+          chats = upsertChatMessages({ ...prev, chats }, targetWxid, now, outgoingMessages);
+        });
+        set({ chats });
+        return true;
       },
 
       sendLinkMessage(targetWxid: string, link: { cover?: string; title?: string; url?: string; source?: string }) {
@@ -972,4 +1019,3 @@ export const selectTextMomentDraft = memoSelector(
   (state: WechatState & WechatActions) => state.textMomentDraft,
   (draft) => draft ?? EMPTY_TEXT_MOMENT_DRAFT,
 );
-

@@ -31,6 +31,7 @@ export const manifest: AppManifest = {
       action: 'ACTION_SEND',
       type: 'text/plain',
       route: '/',
+      shareKind: 'text',
       description: '接收文本分享',
     },
   ],

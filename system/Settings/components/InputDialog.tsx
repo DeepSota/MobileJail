@@ -14,6 +14,10 @@ export const InputDialog: React.FC<{
   allowEmpty?: boolean;
   onClose: () => void;
   onConfirm: (value: string) => void;
+  confirmAction?: {
+    id: string;
+    params?: (value: string) => Record<string, string | number | boolean>;
+  };
 }> = ({
   open,
   title,
@@ -24,6 +28,7 @@ export const InputDialog: React.FC<{
   allowEmpty = false,
   onClose,
   onConfirm,
+  confirmAction,
 }) => {
   const s = useAppStrings(strings, stringsEn);
   const [value, setValue] = useState(defaultValue);
@@ -40,7 +45,12 @@ export const InputDialog: React.FC<{
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center px-6">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div
+        className="absolute inset-0 bg-black/40"
+        data-trigger="system.back"
+        data-trigger-type="back"
+        onClick={onClose}
+      />
       <div className="relative w-full max-w-[340px] bg-app-surface rounded-2xl overflow-hidden shadow-2xl">
         <div className="px-5 py-4 border-b border-gray-100">
           <div className="text-[17px] font-semibold text-app-text">{title}</div>
@@ -60,6 +70,8 @@ export const InputDialog: React.FC<{
           <div className="flex gap-3 mt-5">
             <button
               type="button"
+              data-trigger="system.back"
+              data-trigger-type="back"
               onClick={onClose}
               className="flex-1 py-3 rounded-xl bg-gray-100 text-[15px] font-medium text-gray-700 active:bg-gray-200"
             >
@@ -67,6 +79,13 @@ export const InputDialog: React.FC<{
             </button>
             <button
               type="button"
+              data-action={confirmAction?.id}
+              data-action-type={confirmAction ? 'tap' : undefined}
+              data-action-params={
+                confirmAction?.params
+                  ? JSON.stringify(confirmAction.params(confirmValue))
+                  : undefined
+              }
               onClick={() => canConfirm && onConfirm(confirmValue)}
               disabled={!canConfirm}
               className="flex-1 py-3 rounded-xl bg-app-primary text-[15px] font-medium text-white disabled:opacity-50 active:bg-[#2f74e6]"
@@ -79,4 +98,3 @@ export const InputDialog: React.FC<{
     </div>
   );
 };
-

@@ -4,12 +4,14 @@ import { useEbayGestures } from '../navigation';
 import TabBar from '../components/TabBar';
 import { useEbayStrings } from '../hooks/useEbayStrings';
 import { cdn } from '../../../os/utils/cdn';
+import { useEbayStore } from '../state';
 
 const EBAY_CDN = cdn('ebay/images');
 
 const HomePage: React.FC = () => {
   const { bindTap, bindAction } = useEbayGestures();
   const s = useEbayStrings();
+  const user = useEbayStore(state => state.user);
 
   return (
     <div className="h-full bg-app-surface flex flex-col relative">
@@ -58,21 +60,31 @@ const HomePage: React.FC = () => {
 
           {/* Auth Prompt */}
           <div className="px-4 mb-6 text-center">
-            <p className="text-gray-600 mb-4 text-base">{s.home_auth_prompt}</p>
-            <div className="flex space-x-4">
-                <button 
+            {user.isLoggedIn ? (
+              <div className="py-2 text-left">
+                <p className="text-sm text-gray-500">{s.auth_signed_in_as}</p>
+                <p className="mt-1 text-base font-semibold text-black">{user.name}</p>
+                <p className="text-sm text-gray-600">{user.username}</p>
+              </div>
+            ) : (
+              <>
+                <p className="text-gray-600 mb-4 text-base">{s.home_auth_prompt}</p>
+                <div className="flex space-x-4">
+                  <button
                     {...bindAction('home.auth.register')}
                     className="flex-1 border border-blue-600 text-blue-600 rounded-full py-2.5 font-medium"
-                >
+                  >
                     {s.home_register}
-                </button>
-                <button 
-                    {...bindAction('home.auth.login')}
+                  </button>
+                  <button
+                    {...bindTap('home.auth.login')}
                     className="flex-1 border border-blue-600 text-blue-600 rounded-full py-2.5 font-medium"
-                >
+                  >
                     {s.home_login}
-                </button>
-            </div>
+                  </button>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Old Promo Banner (Keeping as it was in previous design) */}

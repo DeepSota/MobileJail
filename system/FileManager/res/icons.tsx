@@ -22,6 +22,8 @@ import {
   SlidersHorizontal,
   MoreVertical,
   X,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 
 // ── Navigation ────────────────────────────────────────────
@@ -38,6 +40,8 @@ export const IcMoreVert = MoreVertical;
 export const IcCheck = Check;
 export const IcFilter = SlidersHorizontal;
 export const IcList = ListChecks;
+export const IcZoomIn = ZoomIn;
+export const IcZoomOut = ZoomOut;
 
 // ── File / Folder ─────────────────────────────────────────
 export const IcFolder = Folder;
@@ -133,6 +137,8 @@ export const ICON_REGISTRY: Record<string, any> = {
   IcCheck,
   IcFilter,
   IcList,
+  IcZoomIn,
+  IcZoomOut,
   IcFolder,
   IcFolderOpen,
   IcFolderAdd,

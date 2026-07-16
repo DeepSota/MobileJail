@@ -57,6 +57,7 @@ export const strings = {
   empty_search_results: '没有匹配的短信',
   new_message_title: '新建短信',
   recipient_label: '收信人:',
+  remove_recipient: '移除收信人',
   pick_contact_title: '选择联系人',
   cancel: '取消',
   sms_placeholder: '短信',
@@ -107,6 +108,9 @@ export const strings = {
   file_size_kb: 'KB',
   file_size_mb: 'MB',
   file_size_bytes: 'B',
+  shared_files: '待发送附件',
+  attachment_send_failed: '附件复制失败，请确认源文件仍然可用后重试。',
+  attachment_unavailable: '附件已不存在或暂时无法打开',
 } as const;
 
 export type StringKey = keyof typeof strings;

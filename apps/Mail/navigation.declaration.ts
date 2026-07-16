@@ -38,7 +38,20 @@ export const NAVIGATION_DECLARATION = {
       params: { messageId: 'string' },
       entryPoint: 'deepLink',
       scrollContainers: MAIN_SCROLL,
-      uiStates: [{ id: 'mail.detail.base', search: {}, description: '邮件详情页' }],
+      uiStates: [{
+        id: 'mail.detail.base',
+        search: {},
+        description: '邮件详情页',
+        actions: [
+          {
+            id: 'mail.detail.item.open',
+            label: '打开邮件附件',
+            behavior: 'other',
+            scope: 'item',
+            paramsSchema: { attachmentId: 'string', fileId: 'string' },
+          },
+        ],
+      }],
       queryParams: {},
       description: '邮件详情页',
     },
@@ -48,8 +61,15 @@ export const NAVIGATION_DECLARATION = {
       params: {},
       entryPoint: 'both',
       scrollContainers: MAIN_SCROLL,
-      uiStates: [{ id: 'mail.compose.base', search: {}, description: '写新邮件页' }],
-      queryParams: { selectFile: 'string' },
+      uiStates: [{
+        id: 'mail.compose.base',
+        search: {},
+        description: '写新邮件页',
+        actions: [
+          { id: 'compose.attachment.add', label: '添加附件', behavior: 'other', paramsSchema: { type: 'string' } },
+        ],
+      }],
+      queryParams: { selectFile: 'string', replyId: 'string', forwardId: 'string' },
       description: '写新邮件页',
     },
     {
@@ -58,7 +78,11 @@ export const NAVIGATION_DECLARATION = {
       params: { draftId: 'string' },
       entryPoint: 'none',
       scrollContainers: MAIN_SCROLL,
-      uiStates: [{ id: 'mail.compose.draft', search: {}, description: '编辑草稿页' }],
+      uiStates: [{
+        id: 'mail.compose.draft.base',
+        search: {},
+        description: '编辑草稿页',
+      }],
       queryParams: { selectFile: 'string' },
       description: '编辑草稿页',
     },
@@ -133,7 +157,7 @@ export const NAVIGATION_DECLARATION = {
     },
     {
       id: 'compose.draft.open',
-      from: '*',
+      from: '/message/:messageId',
       to: '/compose/:draftId',
       search: {},
       searchParams: {},
@@ -166,7 +190,7 @@ export const NAVIGATION_DECLARATION = {
     },
     {
       id: 'compose.saveDraft',
-      from: '*',
+      from: ['/compose', '/compose/:draftId'],
       to: '/',
       search: {},
       searchParams: {},
@@ -177,7 +201,7 @@ export const NAVIGATION_DECLARATION = {
     },
     {
       id: 'compose.send',
-      from: '*',
+      from: ['/compose', '/compose/:draftId'],
       to: '/message/:messageId',
       search: {},
       searchParams: {},

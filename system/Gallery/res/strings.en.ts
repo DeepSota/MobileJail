@@ -33,6 +33,7 @@ export const stringsEn: Partial<Record<StringKey, string>> = {
   action_favorite: 'Favorite',
   action_share: 'Share',
   action_delete: 'Delete',
+  share_failed: 'Unable to open sharing. Make sure the photo is still available and try again.',
 
   // --- Delete confirmation dialog ---
   delete_photo_title: 'Delete photo',
@@ -74,6 +75,9 @@ export const stringsEn: Partial<Record<StringKey, string>> = {
 
   // --- Photo viewer page ---
   viewer_back: 'Back',
+  viewer_image_unavailable: 'This image is missing or cannot be displayed',
+  viewer_image_unavailable_hint: 'The file may have been deleted, moved, or damaged.',
+  viewer_retry: 'Retry',
   viewer_rotate: 'Rotate',
   viewer_send: 'Send',
   viewer_edit: 'Edit',

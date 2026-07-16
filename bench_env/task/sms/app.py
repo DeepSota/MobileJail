@@ -13,6 +13,21 @@ from bench_env.task.common_tasks import match_value
 from bench_env.task.tencent_meeting.app import TencentMeeting
 from bench_env.task.utils import norm
 
+
+def _message_searchable(message: dict[str, Any]) -> str:
+    """Build a keyword-searchable string from a message dict.
+
+    Image/file attachments store a ``content://`` URI in ``content`` but the
+    human-readable file name in ``fileName``.  This helper concatenates both
+    so that keyword checks (e.g. ``"风景.jpg"``) match regardless of which
+    field carries the name.
+    """
+    parts = [str(message.get("content") or "")]
+    fn = message.get("fileName")
+    if fn:
+        parts.append(str(fn))
+    return " ".join(parts)
+
 SMS_EXISTING_SENDERS = [
     "华为云",
     "抖音月付",
@@ -213,6 +228,7 @@ class Sms(BaseApp):
         message_id: str,
         timestamp: str,
         is_unread: bool = True,
+        phone_number: str | None = None,
     ) -> dict[str, Any]:
         next_state = copy.deepcopy(self.raw)
         next_state.setdefault("conversations", copy.deepcopy(self.get_list("conversations")))
@@ -222,6 +238,8 @@ class Sms(BaseApp):
         )
         next_sms = Sms(next_state)
         conversation = next_sms.ensure_conversation_with_sender(sender_name)
+        if phone_number:
+            conversation["phoneNumber"] = phone_number
         conversation_id = str(conversation["id"])
         messages = list(next_sms.messages_by_conversation_id.get(conversation_id) or [])
         messages.append(
@@ -406,20 +424,58 @@ class Sms(BaseApp):
             field = f"sent_to_{sender_name}"
 
         messages = self.new_outgoing_messages_to(sender_name)
+        expected_desc = f"new message to '{sender_name}' containing {list(keywords)}"
+
+        # 1. Single-message check: search content and fileName together.
+        # Image/file messages store a content:// URI in content; the human-
+        # readable name lives in fileName.  Build a single searchable string
+        # per message so that both fields are checked.
         matched = next(
             (
                 message
                 for message in messages
-                if all(keyword in str(message["content"]) for keyword in keywords)
+                if all(
+                    keyword in _message_searchable(message)
+                    for keyword in keywords
+                )
             ),
             None,
         )
-        actual = str(matched["content"]) if matched else None
+        if matched:
+            actual_desc = str(matched.get("content") or "")
+            fn = matched.get("fileName")
+            if fn:
+                actual_desc = f"{actual_desc} (fileName={fn})" if actual_desc else str(fn)
+            return {
+                "field": field,
+                "expected": expected_desc,
+                "actual": actual_desc,
+                "passed": True,
+            }
+
+        # 2. Aggregated check: keywords may span across multiple messages
+        # (e.g. text in one message, attachment name in another).  Each
+        # message's searchable string already includes fileName.
+        if keywords and messages:
+            searchable = [_message_searchable(m) for m in messages]
+            if all(
+                any(kw in text for text in searchable)
+                for kw in keywords
+            ):
+                actual = "; ".join(_message_searchable(m) for m in messages)
+                return {
+                    "field": field,
+                    "expected": expected_desc,
+                    "actual": actual,
+                    "passed": True,
+                    "note": "aggregated_across_messages",
+                }
+
         return {
             "field": field,
-            "expected": f"new message to '{sender_name}' containing {list(keywords)}",
-            "actual": actual,
-            "passed": matched is not None,
+            "expected": expected_desc,
+            "actual": None,
+            "passed": False,
         }
 
     def check_new_sent_any_of(
@@ -437,12 +493,12 @@ class Sms(BaseApp):
             (
                 message
                 for message in messages
-                if any(label and label in str(message.get("content") or "") for label in labels)
-                and all(keyword in str(message.get("content") or "") for keyword in extra_keywords)
+                if any(label and label in _message_searchable(message) for label in labels)
+                and all(keyword in _message_searchable(message) for keyword in extra_keywords)
             ),
             None,
         )
-        actual = str(matched.get("content") or "") if matched else None
+        actual = _message_searchable(matched) if matched else None
         return {
             "field": field,
             "expected": {
@@ -469,12 +525,12 @@ class Sms(BaseApp):
             (
                 message
                 for message in messages
-                if match_value(expected, str(message.get("content") or ""))
-                and all(keyword in str(message.get("content") or "") for keyword in extra_keywords)
+                if match_value(expected, _message_searchable(message))
+                and all(keyword in _message_searchable(message) for keyword in extra_keywords)
             ),
             None,
         )
-        actual = str(matched.get("content") or "") if matched else None
+        actual = _message_searchable(matched) if matched else None
         return {
             "field": field,
             "expected": {

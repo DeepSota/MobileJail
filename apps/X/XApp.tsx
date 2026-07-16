@@ -56,6 +56,7 @@ import { colorStates, colorStatesDark } from './res/colors.states';
 import { dimens } from './res/dimens';
 import { anim } from './res/anim';
 import { useAppNavigationHandler } from '../../os/hooks/useAppNavigationHandler';
+import { ShareFilePage } from './pages/ShareFilePage';
 
 const XNavigationHandler: React.FC = () => {
   const navigate = useNavigate();
@@ -101,6 +102,7 @@ const XNavigationHandler: React.FC = () => {
         pathname === '/profile' ||
           pathname === '/profile/edit' ||
         pathname === '/compose' ||
+        pathname === '/share' ||
         pathname.startsWith('/reply/') ||
         pathname.startsWith('/connections/') ||
         pathname.startsWith('/messages/') ||
@@ -311,6 +313,7 @@ export const XApp: React.FC = () => {
           <XNavigationHandler />
           <Routes>
             <Route path="/compose" element={<ComposePage />} />
+            <Route path="/share" element={<ShareFilePage />} />
             <Route path="/messages/:id" element={<ChatPage />} />
             <Route path="/" element={<Layout />}>
               <Route index element={<div />} />

@@ -52,7 +52,12 @@ export function useFileManagerGestures() {
     return {
       onClick: (e: React.MouseEvent) => {
         e.stopPropagation();
-        back();
+        // Delegate to the OS so a viewer Activity pushed into another App's
+        // Task is finished when its internal MemoryRouter is already at index 0.
+        // For ordinary FileManager history, the registered back handler still
+        // consumes the event and performs navigate(-1).
+        if (window.__OS__?.handleBack) window.__OS__.handleBack();
+        else back();
       },
       'data-trigger': 'system.back',
       'data-trigger-type': 'tap',

@@ -34,6 +34,7 @@ export const strings = {
   action_favorite: '收藏',
   action_share: '分享',
   action_delete: '删除',
+  share_failed: '无法打开分享，请确认照片仍然可用后重试',
 
   // --- Delete confirmation dialog ---
   delete_photo_title: '删除照片',
@@ -75,6 +76,9 @@ export const strings = {
 
   // --- Photo viewer page ---
   viewer_back: '返回',
+  viewer_image_unavailable: '图片已不存在或无法显示',
+  viewer_image_unavailable_hint: '文件可能已被删除、移动或损坏。',
+  viewer_retry: '重试',
   viewer_rotate: '旋转',
   viewer_send: '发送',
   viewer_edit: '编辑',

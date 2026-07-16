@@ -68,6 +68,10 @@ interface OSApi {
     copyText: (text: string, source?: string) => void;
     copyImage: (uri: string, source?: string) => void;
   };
+  sensors: {
+    isAccessAllowed: (sensor: import('../SensorPrivacyService').ProtectedSensor, appId?: AppId) => boolean;
+    getUserMedia: (constraints: MediaStreamConstraints, appId?: AppId) => Promise<MediaStream>;
+  };
   statusBar: {
     getState: () => import('../StatusBarService').StatusBarDynamicState;
     reset: () => void;
@@ -221,11 +225,13 @@ interface SimFSApi {
   list(path: string): unknown[];
   mkdir(path: string, name: string): Promise<unknown>;
   read(path: string): Promise<Blob | null>;
+  readById(id: string): Promise<Blob | null>;
   write(path: string, content: string | Blob | ArrayBuffer, options?: { mimeType?: string }): Promise<unknown>;
   delete(path: string): Promise<boolean>;
   move(fromPath: string, toPath: string, newName?: string): Promise<unknown>;
   copy(sourcePath: string, destPath: string, newName?: string): Promise<unknown>;
   stat(path: string): unknown | null;
+  statById(id: string): unknown | null;
   exists(path: string): boolean;
   search(query: string, options?: Record<string, unknown>): unknown[];
   getMedia(): unknown[];

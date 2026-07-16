@@ -96,7 +96,13 @@ export const FolderListPage: React.FC = () => {
         >
           <IcMenu size={22} className="text-app-text" />
         </button>
-        <span className="text-[17px] font-medium text-app-text ml-1">{folderLabel}</span>
+        <button
+          type="button"
+          {...bindTap('folders.open')}
+          className="text-[17px] font-medium text-app-text ml-1 active:opacity-70"
+        >
+          {folderLabel}
+        </button>
         {unreadInFolder > 0 && (
           <span className="ml-2 text-[12px] text-gray-400">
             {unreadInFolder} {s.list_unread_suffix}

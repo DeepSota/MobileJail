@@ -9,6 +9,9 @@ export interface Conversation {
     sender: string;
     /** Bound phone number — only conversations with a valid phoneNumber can send */
     phoneNumber?: string;
+    /** Group/RCS thread recipients; sorted normalized phone identities. */
+    phoneNumbers?: string[];
+    participantNames?: string[];
     timestamp: string;
     avatarUrl?: string;
     avatarColor?: string;
@@ -30,6 +33,7 @@ export interface Message {
     fileName?: string;
     fileSize?: number;
     mimeType?: string;
+    fileRef?: import('../../os/types/fileShare').FileRefV1;
 }
 
 /** Attachment panel option */

@@ -31,4 +31,43 @@ export const manifest: AppManifest = {
     PERMISSIONS.RECORD_AUDIO,
     PERMISSIONS.READ_CONTACTS,
   ],
+  intentFilters: [
+    {
+      action: 'ACTION_SEND',
+      type: 'image/*',
+      route: '/share-files',
+      shareKind: 'files',
+      availabilityKey: 'tencent_meeting.active_meeting',
+      description: '发送图片到当前会议',
+    },
+    {
+      action: 'ACTION_SEND',
+      type: 'application/*',
+      route: '/share-files',
+      shareKind: 'files',
+      availabilityKey: 'tencent_meeting.active_meeting',
+      description: '发送文件到当前会议',
+    },
+    {
+      action: 'ACTION_SEND',
+      type: '*/*',
+      route: '/share-files',
+      shareKind: 'files',
+      availabilityKey: 'tencent_meeting.active_meeting',
+      description: '发送任意单个文件到当前会议',
+    },
+    {
+      action: 'ACTION_SEND_MULTIPLE',
+      type: '*/*',
+      route: '/share-files',
+      shareKind: 'files',
+      availabilityKey: 'tencent_meeting.active_meeting',
+      description: '发送多个图片或文件到当前会议',
+    },
+  ],
+  queries: [
+    { action: 'ACTION_VIEW', type: 'image/*' },
+    { action: 'ACTION_VIEW', type: 'application/*' },
+    { action: 'ACTION_VIEW', type: 'text/plain' },
+  ],
 };

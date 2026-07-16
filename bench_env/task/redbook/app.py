@@ -1641,6 +1641,51 @@ class Redbook(BaseApp):
             "passed": commented,
         }
 
+    def check_new_comment_with_image(
+        self,
+        *keywords: str,
+        image_filename: str = "",
+        field: str = "comment_with_image",
+    ) -> dict[str, Any]:
+        """验证新增评论中是否包含指定关键词，且附带图片路径含 *image_filename*。
+
+        ``comment.image`` 存储的是文件系统路径（如
+        ``/sdcard/DCIM/Camera/微笑.jpg``），因此检查文件名是否在路径
+        子串中即可。
+        """
+        curr_comments = self.state_comments
+        init_comments = self.init.state_comments
+        init_ids = set(init_comments.keys()) if isinstance(init_comments, dict) else set()
+        new_ids = set(curr_comments.keys()) - init_ids if isinstance(curr_comments, dict) else set()
+        new_comments = [curr_comments[cid] for cid in new_ids if cid in curr_comments]
+        matched_comment = None
+        for c in new_comments:
+            content = str(c.get("content", ""))
+            if not all(kw in content for kw in keywords):
+                continue
+            image_filename_norm = image_filename.replace(" ", "")
+            image_val = str(c.get("image") or "")
+            if image_filename and not image_val:
+                continue
+            if image_filename and image_filename_norm not in image_val.replace(" ", ""):
+                continue
+            if not image_filename and not image_val:
+                continue  # require image present but any filename OK
+            matched_comment = c
+            break
+        return {
+            "field": field,
+            "expected": {
+                "keywords": list(keywords),
+                "image_filename": image_filename or "(any)",
+            },
+            "actual": {
+                "content": matched_comment.get("content", "") if matched_comment else "(none)",
+                "image": matched_comment.get("image", "") if matched_comment else "",
+            } if matched_comment else "(no matching comment)",
+            "passed": matched_comment is not None,
+        }
+
     def check_note_published(
         self,
         title_pred=None,

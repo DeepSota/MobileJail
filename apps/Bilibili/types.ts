@@ -1,5 +1,7 @@
 // Type definitions for Bilibili app data
 
+import type { FileRefV1 } from '@/os/types/fileShare';
+
 export interface BilibiliVideo {
   id: string;
   title?: string;
@@ -218,8 +220,9 @@ export interface BilibiliChatMessage {
   senderId: string;
   content: string;
   timestamp: number;
-  type: 'text' | 'image' | 'video';
+  type: 'text' | 'image' | 'video' | 'file';
   image?: string;
+  fileRef?: FileRefV1;
   sharedVideoId?: string;
   sharedVideoCover?: string;
   sharedVideoTitle?: string;

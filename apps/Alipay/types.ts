@@ -1,3 +1,5 @@
+import type { FileRefV1 } from '@/os/types/fileShare';
+
 export type AlipayTheme = {
   primary: string;
   secondary: string;
@@ -219,10 +221,11 @@ export type ConversationItem = PersonConversation | ServiceConversation;
 export type ChatMessage = {
   id: string;
   senderId: string;          // 'self' | contactId | 'system'
-  type: 'text' | 'transfer' | 'image' | 'system' | 'time';
+  type: 'text' | 'transfer' | 'image' | 'file' | 'system' | 'time';
   content: string;
   timestamp: number;
   transferId?: string;       // type === 'transfer' 时关联 transferRecords[*].id
+  fileRef?: FileRefV1;
 };
 
 export type NotificationCard = {

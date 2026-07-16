@@ -9,6 +9,7 @@ import type { FSNode } from '../../../os/types';
 import { strings } from '../res/strings';
 import { stringsEn } from '../res/strings.en';
 import { useAppStrings } from '@/os/useAppStrings';
+import { useSettingsGestures } from '../hooks/useSettingsGestures';
 function parseCapacityBytes(raw: string | undefined): number {
   const s = String(raw ?? '').trim();
   const m = s.match(/([\d.]+)\s*(TB|GB|MB|KB|B)/i);
@@ -46,9 +47,11 @@ function openFileManager(route: string) {
 
 export const StorageDashboardPage: React.FC = () => {
   const s = useAppStrings(strings, stringsEn);
+  const { bindTap } = useSettingsGestures();
   const [refreshKey, setRefreshKey] = useState(0);
 
   const stats = useMemo(() => {
+    void refreshKey;
     // Empty query matches all names (includes('') => true).
     const allFiles = FileSystem.searchFiles('', { path: '/sdcard', type: 'file' });
     const images = allFiles.filter((n) => (n.mimeType || '').startsWith('image/'));
@@ -86,7 +89,11 @@ export const StorageDashboardPage: React.FC = () => {
   return (
     <div className="h-full bg-app-bg flex flex-col">
       <SettingsHeader title={s.storage} />
-      <div className="flex-1 overflow-y-auto no-scrollbar pb-8">
+      <div
+        className="flex-1 overflow-y-auto no-scrollbar pb-8"
+        data-scroll-container="main"
+        data-scroll-direction="vertical"
+      >
         <div className="px-4 mt-2">
           <div className="bg-app-surface rounded-2xl overflow-hidden">
             <PreferenceItem
@@ -107,7 +114,10 @@ export const StorageDashboardPage: React.FC = () => {
             summary={s.browse_sdcard}
             value={usedText}
             showDivider={true}
-            onClick={() => openFileManager('/')}
+            itemProps={bindTap<HTMLDivElement>(
+              { kind: 'action', id: 'settings.storage.category.open' },
+              { params: { category: 'files' }, onTrigger: () => openFileManager('/') },
+            )}
           >
             <IcFile size={16} className="text-gray-300" />
           </PreferenceItem>
@@ -115,7 +125,10 @@ export const StorageDashboardPage: React.FC = () => {
             title={s.photos_2}
             value={FileSystem.formatFileSize(stats.images)}
             showDivider={true}
-            onClick={() => openFileManager('/category/images')}
+            itemProps={bindTap<HTMLDivElement>(
+              { kind: 'action', id: 'settings.storage.category.open' },
+              { params: { category: 'images' }, onTrigger: () => openFileManager('/category/images') },
+            )}
           >
             <IcImage size={16} className="text-gray-300" />
           </PreferenceItem>
@@ -123,7 +136,10 @@ export const StorageDashboardPage: React.FC = () => {
             title={s.videos}
             value={FileSystem.formatFileSize(stats.videos)}
             showDivider={true}
-            onClick={() => openFileManager('/category/videos')}
+            itemProps={bindTap<HTMLDivElement>(
+              { kind: 'action', id: 'settings.storage.category.open' },
+              { params: { category: 'videos' }, onTrigger: () => openFileManager('/category/videos') },
+            )}
           >
             <IcFilm size={16} className="text-gray-300" />
           </PreferenceItem>
@@ -131,7 +147,10 @@ export const StorageDashboardPage: React.FC = () => {
             title={s.audio}
             value={FileSystem.formatFileSize(stats.audio)}
             showDivider={true}
-            onClick={() => openFileManager('/category/audio')}
+            itemProps={bindTap<HTMLDivElement>(
+              { kind: 'action', id: 'settings.storage.category.open' },
+              { params: { category: 'audio' }, onTrigger: () => openFileManager('/category/audio') },
+            )}
           >
             <IcMusic size={16} className="text-gray-300" />
           </PreferenceItem>
@@ -139,7 +158,10 @@ export const StorageDashboardPage: React.FC = () => {
             title={s.documents}
             value={FileSystem.formatFileSize(stats.docs)}
             showDivider={false}
-            onClick={() => openFileManager('/category/documents')}
+            itemProps={bindTap<HTMLDivElement>(
+              { kind: 'action', id: 'settings.storage.category.open' },
+              { params: { category: 'documents' }, onTrigger: () => openFileManager('/category/documents') },
+            )}
           >
             <IcFileText size={16} className="text-gray-300" />
           </PreferenceItem>
@@ -151,7 +173,10 @@ export const StorageDashboardPage: React.FC = () => {
               title={s.refresh_statistics}
               summary={s.recalculate_storage_usage}
               showDivider={false}
-              onClick={() => setRefreshKey((x) => x + 1)}
+              itemProps={bindTap<HTMLDivElement>(
+                { kind: 'action', id: 'settings.storage.refresh' },
+                { onTrigger: () => setRefreshKey((x) => x + 1) },
+              )}
             >
               <IcRefresh size={16} className="text-gray-300" />
             </PreferenceItem>
@@ -163,4 +188,3 @@ export const StorageDashboardPage: React.FC = () => {
 };
 
 export default StorageDashboardPage;
-

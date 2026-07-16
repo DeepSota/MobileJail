@@ -85,8 +85,16 @@ const BrowserHome: React.FC<{ onNavigate: (url: string) => void }> = ({ onNaviga
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     placeholder="搜索或输入网址"
-                    className="w-full h-16 pl-14 pr-6 bg-slate-100/80 backdrop-blur-sm rounded-[24px] text-lg outline-none border-2 border-transparent focus:border-blue-500/20 focus:bg-white focus:shadow-xl transition-all"
+                    className="w-full h-16 pl-14 pr-14 bg-slate-100/80 backdrop-blur-sm rounded-[24px] text-lg outline-none border-2 border-transparent focus:border-blue-500/20 focus:bg-white focus:shadow-xl transition-all"
                 />
+                {input.trim() && (
+                    <button
+                        type="submit"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center rounded-full bg-blue-500 text-white active:bg-blue-600 transition-colors"
+                    >
+                        <IcSearch size={18} />
+                    </button>
+                )}
             </form>
 
             <div className="w-full max-w-md grid grid-cols-4 gap-y-8">
@@ -116,17 +124,20 @@ const BrowserHome: React.FC<{ onNavigate: (url: string) => void }> = ({ onNaviga
 };
 
 // --- WebView Component ---
-const BrowserView: React.FC<{ url: string }> = ({ url }) => {
+const BrowserView: React.FC<{ url: string; onUrlBarTap: () => void }> = ({ url, onUrlBarTap }) => {
     const [isLoading, setIsLoading] = useState(true);
 
     return (
         <div className="flex-1 flex flex-col min-h-0 bg-app-surface overflow-hidden relative">
             <div className="pt-8 bg-white/80 backdrop-blur-md border-b border-slate-100 shrink-0">
                 <div className="h-12 flex items-center px-4">
-                    <div className="flex-1 bg-slate-100 px-3 py-1.5 rounded-lg flex items-center gap-2 overflow-hidden">
+                    <button
+                        onClick={onUrlBarTap}
+                        className="flex-1 bg-slate-100 px-3 py-1.5 rounded-lg flex items-center gap-2 overflow-hidden active:bg-slate-200 transition-colors"
+                    >
                         <IcShield size={12} className="text-green-500 shrink-0" />
                         <span className="text-[11px] text-slate-500 truncate">{url}</span>
-                    </div>
+                    </button>
                 </div>
             </div>
 
@@ -270,7 +281,7 @@ const BrowserContent: React.FC = () => {
             <div className="flex-1 relative flex flex-col overflow-hidden">
                 <Routes>
                     <Route path="/" element={<BrowserHome onNavigate={handleNavigate} />} />
-                    <Route path="/view" element={<BrowserView url={activeTab.url} />} />
+                    <Route path="/view" element={<BrowserView url={activeTab.url} onUrlBarTap={() => go('home.open')} />} />
                 </Routes>
             </div>
 

@@ -5,6 +5,13 @@
  */
 export type AppId = string;
 
+export type {
+  FileRefV1,
+  FileShareInput,
+  OpenedFileRef,
+  SharePayloadV1,
+} from './types/fileShare';
+
 /**
  * 已实现组件的 App ID（运行时由 hasAppComponent() 判定）。
  */

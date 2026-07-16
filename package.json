@@ -17,15 +17,20 @@
   "dependencies": {
     "@googlemaps/js-api-loader": "^2.0.2",
     "@sqlite.org/sqlite-wasm": "^3.53.0-build1",
+    "@tailwindcss/node": "^4.3.2",
+    "@tailwindcss/oxide": "^4.3.2",
+    "@tailwindcss/postcss": "^4.3.2",
     "@tanstack/react-virtual": "^3.13.19",
     "@types/google.maps": "^3.58.1",
     "immer": "^11.1.4",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.561.0",
+    "pdfjs-dist": "^5.4.624",
     "qrcode": "^1.5.4",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-router-dom": "^7.10.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zustand": "^5.0.11"
   },
   "devDependencies": {

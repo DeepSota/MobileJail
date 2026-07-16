@@ -20,6 +20,8 @@ export interface SettingsItem {
   /** Navigate to this sub-page id */
   targetPage?: string;
   icon?: string;
+  /** When set, this item is disabled unless this preference key is true */
+  dependency?: string;
 }
 
 /** A group of related preference items */

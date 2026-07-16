@@ -1,3 +1,5 @@
+import type { FileRefV1 } from '@/os/types/fileShare';
+
 export interface HotSearchItem {
   keyword: string;
   isHot?: boolean;
@@ -11,8 +13,9 @@ export interface ChatMessage {
   senderId: string;
   content: string;
   timestamp: number;
-  type: 'text' | 'image' | 'note';
+  type: 'text' | 'image' | 'note' | 'file';
   image?: string;
+  fileRef?: FileRefV1;
   forwardedNoteId?: string;
   forwardedNoteTitle?: string;
   forwardedNoteImage?: string;

@@ -9,7 +9,7 @@ function lookupAuthors(userId: string, authors?: Record<number, UserInfo> | null
     authors = getAuthorsSync();
   }
   if (!authors) return undefined;
-  return authors[userId] || authors[Number(userId)];
+  return authors[Number(userId)];
 }
 
 /** 尝试从 commenters 中查找 name/face（同步，接受外部传入或内部 fallback） */
@@ -18,7 +18,7 @@ function lookupCommenters(userId: string, commenters?: Record<number, UserInfo> 
     commenters = getCommentersSync();
   }
   if (!commenters) return undefined;
-  return commenters[userId] || commenters[Number(userId)];
+  return commenters[Number(userId)];
 }
 
 /**

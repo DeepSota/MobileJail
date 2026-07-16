@@ -47,6 +47,7 @@ export interface MailAttachment {
   mimeType: string;
   size: number;          // bytes
   uri?: string;
+  fileRef?: import('../../os/types/fileShare').FileRefV1;
 }
 
 export interface DraftInput {

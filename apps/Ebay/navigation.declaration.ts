@@ -19,7 +19,6 @@ export const NAVIGATION_DECLARATION: NavigationDeclaration = {
           search: {},
           description: 'eBay 首页',
           actions: [
-            { id: 'home.auth.login', label: '登录', behavior: 'other', description: '点击登录按钮' },
             { id: 'home.auth.register', label: '注册', behavior: 'other', description: '点击注册按钮' },
             { id: 'home.promo.getCoupon', label: '获取优惠券', behavior: 'other', description: '点击获取优惠券' }
           ]
@@ -40,7 +39,7 @@ export const NAVIGATION_DECLARATION: NavigationDeclaration = {
           search: {},
           description: '我的 eBay 页面',
           actions: [
-            { id: 'me.auth.login', label: '登录', behavior: 'other', description: '点击登录按钮' },
+            { id: 'me.auth.logout', label: '退出登录', behavior: 'submit', description: '退出当前 eBay 账号' },
             { id: 'me.card.watchlist', label: '追踪列表', behavior: 'other', description: '点击追踪列表卡片' },
             { id: 'me.card.bids', label: '出价和议价', behavior: 'other', description: '点击出价和议价卡片' }
           ]
@@ -61,8 +60,8 @@ export const NAVIGATION_DECLARATION: NavigationDeclaration = {
           search: {},
           description: '搜索页面',
           actions: [
-             { id: 'search.history.clear', label: '清除记录', behavior: 'other', description: '清除最近搜索记录' }
-          ]
+            { id: 'search.action.saveItem', label: '收藏商品', behavior: 'other', description: '点击心形按钮收藏/取消收藏商品' },
+          ],
         },
       ],
       queryParams: {},
@@ -80,7 +79,6 @@ export const NAVIGATION_DECLARATION: NavigationDeclaration = {
           search: {},
           description: '出售页面',
           actions: [
-            { id: 'sell.auth.login', label: '登录', behavior: 'other', description: '点击登录按钮' },
             { id: 'sell.auth.register', label: '注册', behavior: 'other', description: '点击注册按钮' },
             { id: 'sell.info.learnMore', label: '了解详情', behavior: 'other', description: '点击了解详情' }
           ]
@@ -154,6 +152,25 @@ export const NAVIGATION_DECLARATION: NavigationDeclaration = {
       description: '设置页面',
     },
     {
+      path: '/login',
+      component: 'LoginPage',
+      params: {},
+      entryPoint: 'none',
+      scrollContainers: MAIN_SCROLL,
+      uiStates: [
+        {
+          id: 'authLogin.base',
+          search: {},
+          description: 'eBay 账号登录',
+          actions: [
+            { id: 'auth.login.submit', label: '提交登录', behavior: 'submit', description: '验证账号密码并登录' },
+          ],
+        },
+      ],
+      queryParams: {},
+      description: 'eBay 登录页面',
+    },
+    {
       path: '/item/:id',
       component: 'ItemDetailPage',
       params: { id: 'string' },
@@ -165,11 +182,8 @@ export const NAVIGATION_DECLARATION: NavigationDeclaration = {
           search: {},
           description: '商品详情页',
           actions: [
-            { id: 'item.addToCart', label: '添加至购物车', behavior: 'other', description: '点击添加至购物车' },
-            { id: 'item.buyNow', label: '立即购买', behavior: 'other', description: '点击立即购买' },
-            { id: 'item.makeOffer', label: '提出议价', behavior: 'other', description: '点击提出议价' },
-            { id: 'item.addToWatchlist', label: '添加至追踪列表', behavior: 'other', description: '点击添加至追踪列表' },
-          ]
+            { id: 'item.action.save', label: '收藏商品', behavior: 'other', description: '点击心形按钮收藏/取消收藏商品' },
+          ],
         },
       ],
       queryParams: {},
@@ -178,6 +192,43 @@ export const NAVIGATION_DECLARATION: NavigationDeclaration = {
   ],
 
   transitions: [
+    // =========================
+    // Authentication
+    // =========================
+    {
+      id: 'home.auth.login',
+      from: '/',
+      to: '/login',
+      search: {},
+      searchParams: {},
+      mode: 'push',
+      params: {},
+      label: '从首页登录',
+      ui: { placement: 'content', icon: 'user', gesture: 'tap' }
+    },
+    {
+      id: 'me.auth.login',
+      from: '/me',
+      to: '/login',
+      search: {},
+      searchParams: {},
+      mode: 'push',
+      params: {},
+      label: '从我的 eBay 登录',
+      ui: { placement: 'content', icon: 'user', gesture: 'tap' }
+    },
+    {
+      id: 'sell.auth.login',
+      from: '/sell',
+      to: '/login',
+      search: {},
+      searchParams: {},
+      mode: 'push',
+      params: {},
+      label: '从出售页面登录',
+      ui: { placement: 'content', icon: 'user', gesture: 'tap' }
+    },
+
     // =========================
     // Global Header Actions
     // =========================
@@ -302,17 +353,6 @@ export const NAVIGATION_DECLARATION: NavigationDeclaration = {
     {
       id: 'search.item.open',
       from: '/search',
-      to: '/item/:id',
-      search: {},
-      searchParams: {},
-      mode: 'push',
-      params: { id: 'string' },
-      label: '打开商品详情',
-      ui: { placement: 'content', icon: 'package', gesture: 'tap' }
-    },
-    {
-      id: 'home.item.open',
-      from: '/',
       to: '/item/:id',
       search: {},
       searchParams: {},

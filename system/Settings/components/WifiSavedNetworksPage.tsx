@@ -1,6 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { SettingsHeader } from './SettingsHeader';
-import { useAppNavigate } from '../navigation';
 import { PreferenceItem } from './PreferenceItem';
 import { Toast } from '@/os/components/Toast';
 import { InputDialog } from './InputDialog';
@@ -8,9 +7,13 @@ import { useWifiConnectedSsid, useWifiSavedNetworks, useBooleanPreference, useWi
 import { strings } from '../res/strings';
 import { stringsEn } from '../res/strings.en';
 import { useAppStrings } from '@/os/useAppStrings';
+import { useSettingsGestures } from '../hooks/useSettingsGestures';
+import { useSettingsDialog } from '../hooks/useSettingsDialog';
 
 export const WifiSavedNetworksPage: React.FC<{ title: string }> = ({ title }) => {
-  const { go } = useAppNavigate();
+  const { bindTap } = useSettingsGestures();
+  const ssidDialog = useSettingsDialog('wifiSsid', 'newNetwork');
+  const passwordDialog = useSettingsDialog('wifiPassword');
   const s = useAppStrings(strings, stringsEn);
   const savedNetworks = useWifiSavedNetworks();
   const connectedSsid = useWifiConnectedSsid();
@@ -26,10 +29,6 @@ export const WifiSavedNetworksPage: React.FC<{ title: string }> = ({ title }) =>
       setToast((prev) => ({ ...prev, visible: false }));
     }, 1600);
   };
-
-  const [ssidDialogOpen, setSsidDialogOpen] = useState(false);
-  const [pwdDialogOpen, setPwdDialogOpen] = useState(false);
-  const pendingSsidRef = useRef('');
 
   const list = useMemo(() => {
     // Keep stable ordering: connected first, then lastConnectedAt desc, then ssid
@@ -47,7 +46,11 @@ export const WifiSavedNetworksPage: React.FC<{ title: string }> = ({ title }) =>
   return (
     <div className="h-full bg-app-bg flex flex-col">
       <SettingsHeader title={title} />
-      <div className="flex-1 overflow-y-auto no-scrollbar pb-8">
+      <div
+        className="flex-1 overflow-y-auto no-scrollbar pb-8"
+        data-scroll-container="main"
+        data-scroll-direction="vertical"
+      >
         {!wifiEnabled && (
           <div className="px-6 py-3 text-[12px] text-gray-400">
             {s.wlan_is_off_you_can_still_manage_saved_networks}
@@ -61,7 +64,7 @@ export const WifiSavedNetworksPage: React.FC<{ title: string }> = ({ title }) =>
               summary={s.manually_add_a_wlan_network}
               showDivider={list.length > 0}
               showChevron={true}
-              onClick={() => setSsidDialogOpen(true)}
+              itemProps={ssidDialog.bindOpen<HTMLDivElement>()}
             />
             {list.map((n, idx) => {
               const isConnected = n.ssid === connectedSsid;
@@ -77,7 +80,9 @@ export const WifiSavedNetworksPage: React.FC<{ title: string }> = ({ title }) =>
                   value={isConnected ? s.connected : undefined}
                   showDivider={idx < list.length - 1}
                   showChevron={true}
-                  onClick={() => go('page.open', { pageId: `wifi_saved_network__${encodeURIComponent(n.ssid)}` })}
+                  itemProps={bindTap<HTMLDivElement>('page.open', {
+                    params: { pageId: `wifi_saved_network__${encodeURIComponent(n.ssid)}` },
+                  })}
                 />
               );
             })}
@@ -86,32 +91,38 @@ export const WifiSavedNetworksPage: React.FC<{ title: string }> = ({ title }) =>
       </div>
 
       <InputDialog
-        open={ssidDialogOpen}
+        open={ssidDialog.isOpen}
         title={s.add_network}
         placeholder={s.network_name_ssid}
-        onClose={() => setSsidDialogOpen(false)}
+        onClose={ssidDialog.close}
+        confirmAction={{
+          id: 'settings.wifi.saved.ssid.submit',
+          params: (ssid) => ({ ssid }),
+        }}
         onConfirm={(ssid) => {
-          pendingSsidRef.current = ssid;
-          setSsidDialogOpen(false);
-          setPwdDialogOpen(true);
+          ssidDialog.replaceWithWifiPassword(ssid);
         }}
       />
       <InputDialog
-        open={pwdDialogOpen}
+        open={passwordDialog.isOpen}
         title={s.enter_password_2}
         placeholder={s.leave_empty_for_open_networks}
         confirmText={s.add}
         allowEmpty={true}
-        onClose={() => setPwdDialogOpen(false)}
+        onClose={passwordDialog.close}
+        confirmAction={{
+          id: 'settings.wifi.saved.add.submit',
+          params: (password) => ({ ssid: passwordDialog.activeDialogKey, password }),
+        }}
         onConfirm={(pwd) => {
-          const ssid = pendingSsidRef.current;
+          const ssid = passwordDialog.activeDialogKey;
           addWifiSavedNetwork({
             ssid,
             security: pwd ? 'WPA2' : 'OPEN',
             password: pwd || undefined,
             autoJoin: true,
           });
-          setPwdDialogOpen(false);
+          passwordDialog.close();
           showToast(s.added_to_saved_networks);
         }}
       />
@@ -120,4 +131,3 @@ export const WifiSavedNetworksPage: React.FC<{ title: string }> = ({ title }) =>
     </div>
   );
 };
-

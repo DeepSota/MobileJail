@@ -222,6 +222,7 @@ class Controller:
         env, agent, task, initial_obs, max_steps=20, recorder=None, trial_id: int = 0,
         eval_mode: str = "grounded",
         loop_threshold: int = 0,
+        wall_timeout_s: float = 0.0,
     ) -> tuple[ExecutionResult, Any, Any, Any, Any]:
         """
         Run the interaction loop after setup is complete.
@@ -235,6 +236,7 @@ class Controller:
             recorder: Optional recorder for saving trajectory
             trial_id: Trial index for pass@k evaluation
             eval_mode: "text" | "grounded"
+            wall_timeout_s: Per-episode wall-clock timeout in seconds (0=disable)
 
         Returns:
             tuple: (ExecutionResult, init_obs, final_obs, episode, task)
@@ -245,6 +247,7 @@ class Controller:
         episode = None
         obs = initial_obs
         _recent_fps: deque[str] = deque(maxlen=loop_threshold if loop_threshold > 0 else None)
+        deadline = (start_time + wall_timeout_s) if wall_timeout_s > 0 else 0.0
 
         try:
             # task.description includes grounded suffix (via task_name set in setup)
@@ -286,6 +289,12 @@ class Controller:
                     action = await asyncio.to_thread(_wrapped_act)
                     env.stopwatch.record("queue", timing["start"] - submit_t)
                     env.stopwatch.record("exec", timing["end"] - timing["start"])
+
+                # Episode wall-clock timeout check
+                if deadline and time.time() >= deadline:
+                    logger.warning("Episode wall-clock timeout (%.0fs) — EPISODE_TIMEOUT", wall_timeout_s)
+                    truncated, stop_reason = True, "EPISODE_TIMEOUT"
+                    break
 
                 with env.stopwatch.phase("record"):
                     trace.append({"step": step + 1, "action_type": action.action_type,
@@ -383,7 +392,8 @@ class Controller:
     @staticmethod
     async def run_loop(env, agent, task, max_steps=20, recorder=None, trial_id: int = 0,
                        eval_mode: str = "grounded",
-                       loop_threshold: int = 0) -> tuple[ExecutionResult, Any, Any, Any, Any]:
+                       loop_threshold: int = 0,
+                       wall_timeout_s: float = 0.0) -> tuple[ExecutionResult, Any, Any, Any, Any]:
         """
         Run the full interaction loop (setup + run).
 
@@ -414,7 +424,8 @@ class Controller:
             )
             return exec_result, None, None, None, task
         return await Controller.run(env, agent, task, initial_obs, max_steps, recorder, trial_id,
-                                    eval_mode=eval_mode, loop_threshold=loop_threshold)
+                                    eval_mode=eval_mode, loop_threshold=loop_threshold,
+                                    wall_timeout_s=wall_timeout_s)
 
 
 @dataclass
@@ -603,9 +614,10 @@ class BaseRunner(ABC):
         env, agent, task, max_steps=20, recorder=None, trial_id: int = 0,
         evaluator: Optional[Evaluator] = None,
         loop_threshold: int = 0,
+        wall_timeout_s: float = 0.0,
     ) -> EpisodeResult:
         """运行单个 episode (Facade 方法).
-        
+
         Args:
             env: Environment instance
             agent: Agent instance
@@ -614,6 +626,7 @@ class BaseRunner(ABC):
             recorder: Optional recorder for saving trajectory
             trial_id: Trial index for pass@k evaluation (0-indexed)
             evaluator: Evaluator instance for task evaluation
+            wall_timeout_s: Per-episode wall-clock timeout in seconds (0=disable)
         """
         # Use default evaluator if not provided
         if evaluator is None:
@@ -623,7 +636,7 @@ class BaseRunner(ABC):
         eval_mode = getattr(evaluator, "eval_mode", "grounded")
         exec_result, init_obs, last_obs, episode, task = await Controller.run_loop(
             env, agent, task, max_steps, recorder, trial_id=trial_id, eval_mode=eval_mode,
-            loop_threshold=loop_threshold,
+            loop_threshold=loop_threshold, wall_timeout_s=wall_timeout_s,
         )
         
         # 2. Evaluation Phase (Judge)

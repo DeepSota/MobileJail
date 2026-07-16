@@ -170,6 +170,7 @@ class ParallelRunner(BaseRunner):
                         env, agent, task, self.config.get_max_steps(task), self.recorder, trial_id=trial_id,
                         evaluator=self.evaluator,
                         loop_threshold=self.config.loop_detect,
+                        wall_timeout_s=self.config.episode_timeout,
                     )
                     results[idx] = r
                     if self.verbose:
@@ -349,6 +350,7 @@ class ParallelRunner(BaseRunner):
                             env, agent, task, initial_obs, task_ms, self.recorder, trial_id=0,
                             eval_mode=eval_mode,
                             loop_threshold=self.config.loop_detect,
+                            wall_timeout_s=self.config.episode_timeout,
                         )
                         
                     else:
@@ -362,6 +364,7 @@ class ParallelRunner(BaseRunner):
                             env, agent, task, task_ms, self.recorder, trial_id=trial_id,
                             eval_mode=eval_mode,
                             loop_threshold=self.config.loop_detect,
+                            wall_timeout_s=self.config.episode_timeout,
                         )
                     
                     # Evaluate

@@ -6,6 +6,10 @@ import * as TimeService from '../TimeService';
 import { ensureContactsProviderRegistered } from './ContactsProvider';
 import type { ContentUri, ContentValues, Cursor } from '../types/content';
 import type { Conversation, Message } from '../../system/Sms/types';
+import {
+  findSmsConversationByIdentity,
+  normalizeSmsPhoneNumber,
+} from '../../system/Sms/utils/phoneNumber';
 import smsDefaults from './defaults/sms.json';
 
 type MessagesByConversationId = Record<string, Message[]>;
@@ -65,34 +69,24 @@ function updateConversationThread(
 function ensureConversationInternal(recipient: string, phoneNumber?: string): string {
   const normalized = recipient.trim();
   if (!normalized) return '';
+  const normalizedPhone = normalizeSmsPhoneNumber(phoneNumber);
 
-  // Try to find existing conversation by sender name
-  const existing = useSmsProviderStore.getState().conversations.find((conversation) => conversation.sender === normalized);
-  if (existing) {
-    // If found but missing phoneNumber, patch it if we now have one
-    if (phoneNumber && !existing.phoneNumber) {
-      (useSmsProviderStore.setState as any)((state: SmsProviderState) => {
-        const idx = state.conversations.findIndex((c) => c.id === existing.id);
-        if (idx !== -1) state.conversations[idx] = { ...state.conversations[idx], phoneNumber };
-      });
-    }
-    return existing.id;
-  }
-
-  // Also try finding by phoneNumber if provided
-  if (phoneNumber) {
-    const byPhone = useSmsProviderStore.getState().conversations.find(
-      (c) => c.phoneNumber === phoneNumber,
-    );
-    if (byPhone) return byPhone.id;
-  }
+  // A normalized phone number wins over the display name.  If a number was
+  // supplied and no number matches, create a distinct thread instead of
+  // guessing by name and potentially sending to the wrong contact.
+  const existing = findSmsConversationByIdentity(
+    useSmsProviderStore.getState().conversations,
+    normalized,
+    normalizedPhone,
+  );
+  if (existing) return existing.id;
 
   const conversationId = randomId('conv');
   const avatarText = normalized.replace(/\s+/g, '').slice(0, 1) || '\uFF1F';
   const nextConversation: Conversation = {
     id: conversationId,
     sender: normalized,
-    ...(phoneNumber ? { phoneNumber } : {}),
+    ...(normalizedPhone ? { phoneNumber: normalizedPhone } : {}),
     timestamp: '',
     avatarColor: pickAvatarColor(),
     avatarText,
@@ -106,6 +100,50 @@ function ensureConversationInternal(recipient: string, phoneNumber?: string): st
     state.messagesByConversationId[conversationId] = [];
   });
 
+  return conversationId;
+}
+
+function ensureGroupConversationInternal(
+  recipients: Array<{ displayName: string; phoneNumber: string }>,
+): string {
+  const unique = new Map<string, string>();
+  for (const recipient of recipients) {
+    const phone = normalizeSmsPhoneNumber(recipient.phoneNumber);
+    if (!phone || unique.has(phone)) continue;
+    unique.set(phone, recipient.displayName.trim() || phone);
+  }
+  if (unique.size === 0) return '';
+  if (unique.size === 1) {
+    const [phone, name] = [...unique.entries()][0];
+    return ensureConversationInternal(name, phone);
+  }
+
+  const phoneNumbers = [...unique.keys()].sort();
+  const existing = useSmsProviderStore.getState().conversations.find((conversation) => {
+    const current = [...(conversation.phoneNumbers ?? [])].sort();
+    return current.length === phoneNumbers.length
+      && current.every((phone, index) => phone === phoneNumbers[index]);
+  });
+  if (existing) return existing.id;
+
+  const participantNames = phoneNumbers.map((phone) => unique.get(phone) ?? phone);
+  const conversationId = randomId('group');
+  const nextConversation: Conversation = {
+    id: conversationId,
+    sender: participantNames.join('、'),
+    phoneNumbers,
+    participantNames,
+    timestamp: '',
+    avatarColor: pickAvatarColor(),
+    avatarText: String(participantNames.length),
+    isUnread: false,
+    simSlot: 1,
+    messageCount: 0,
+  };
+  (useSmsProviderStore.setState as any)((state: SmsProviderState) => {
+    state.conversations.unshift(nextConversation);
+    state.messagesByConversationId[conversationId] = [];
+  });
   return conversationId;
 }
 
@@ -126,7 +164,7 @@ export function receiveIncomingSms(from: string, content: string): void {
     // noop
   }
 
-  const conversationId = ensureConversationInternal(recipient);
+  const conversationId = ensureConversationInternal(recipient, sender);
   if (!conversationId) return;
 
   const message: Message = {
@@ -156,10 +194,16 @@ export class SmsProvider extends ContentProvider {
 
     if (path === '/conversations' || path === '/conversations/') {
       const sender = String(parsed.query.get('sender') ?? '').trim();
-      if (!sender) {
+      const phoneNumber = normalizeSmsPhoneNumber(parsed.query.get('phoneNumber'));
+      if (!sender && !phoneNumber) {
         return { items: state.conversations, count: state.conversations.length };
       }
-      const items = state.conversations.filter((conversation) => conversation.sender === sender);
+      const items = phoneNumber
+        ? state.conversations.filter(
+            (conversation) => normalizeSmsPhoneNumber(conversation.phoneNumber) === phoneNumber
+              || conversation.phoneNumbers?.includes(phoneNumber),
+          )
+        : state.conversations.filter((conversation) => conversation.sender === sender);
       return { items, count: items.length };
     }
 
@@ -191,7 +235,23 @@ export class SmsProvider extends ContentProvider {
     const parsed = ContentResolver.parseUri(uri);
     if (parsed.path === '/conversations' || parsed.path === '/conversations/') {
       const sender = String(values.sender ?? '').trim();
-      const phoneNumber = typeof values.phoneNumber === 'string' ? values.phoneNumber.trim() : undefined;
+      const phoneNumbers = Array.isArray(values.phoneNumbers)
+        ? values.phoneNumbers.map((value) => String(value ?? ''))
+        : [];
+      const participantNames = Array.isArray(values.participantNames)
+        ? values.participantNames.map((value) => String(value ?? ''))
+        : [];
+      if (phoneNumbers.length > 1) {
+        const conversationId = ensureGroupConversationInternal(phoneNumbers.map((phoneNumber, index) => ({
+          phoneNumber,
+          displayName: participantNames[index] || phoneNumber,
+        })));
+        if (!conversationId) throw new Error('[SmsProvider] group recipients are required');
+        return `content://sms/conversations/${conversationId}`;
+      }
+      const phoneNumber = typeof values.phoneNumber === 'string'
+        ? normalizeSmsPhoneNumber(values.phoneNumber)
+        : undefined;
       const conversationId = ensureConversationInternal(sender, phoneNumber || undefined);
       if (!conversationId) {
         throw new Error('[SmsProvider] sender is required when creating a conversation');
@@ -216,6 +276,9 @@ export class SmsProvider extends ContentProvider {
         ...(typeof values.fileName === 'string' ? { fileName: values.fileName } : {}),
         ...(typeof values.fileSize === 'number' ? { fileSize: values.fileSize } : {}),
         ...(typeof values.mimeType === 'string' ? { mimeType: values.mimeType } : {}),
+        ...(values.fileRef && typeof values.fileRef === 'object' && typeof (values.fileRef as Record<string, unknown>).fileId === 'string'
+          ? { fileRef: structuredClone(values.fileRef) as Message['fileRef'] }
+          : {}),
       };
       updateConversationThread(conversationId, message, { unread: !message.isOutgoing });
       return `content://sms/messages/${message.id}`;
@@ -238,7 +301,9 @@ export class SmsProvider extends ContentProvider {
             ? {
                 ...conversation,
                 ...(typeof values.sender === 'string' ? { sender: values.sender } : {}),
-                ...(typeof values.phoneNumber === 'string' ? { phoneNumber: values.phoneNumber } : {}),
+                ...(typeof values.phoneNumber === 'string'
+                  ? { phoneNumber: normalizeSmsPhoneNumber(values.phoneNumber) }
+                  : {}),
                 ...(typeof values.timestamp === 'string' ? { timestamp: values.timestamp } : {}),
                 ...('avatarUrl' in values ? { avatarUrl: typeof values.avatarUrl === 'string' ? values.avatarUrl : undefined } : {}),
                 ...('avatarColor' in values ? { avatarColor: typeof values.avatarColor === 'string' ? values.avatarColor : undefined } : {}),

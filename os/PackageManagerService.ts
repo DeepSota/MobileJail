@@ -2,8 +2,10 @@ import type { AppId } from './types';
 import type { AppIntentFilter, AppManifest } from './types/manifest';
 import { patchAppNames } from './i18n/en';
 import BroadcastBus, { ACTION_PACKAGE_ADDED, ACTION_PACKAGE_REMOVED } from './BroadcastBus';
+import { mimeTypesMatch, normalizeMimeType } from './MimeType';
+import { IntentAvailabilityRegistry } from './IntentAvailabilityRegistry';
 
-type IntentQuery = { action: string; scheme?: string; type?: string };
+type IntentQuery = { action: string; scheme?: string; type?: string; data?: Record<string, any> };
 
 const manifestModules = import.meta.glob<{ manifest: AppManifest }>(
   ['../apps/*/manifest.ts', '../system/*/manifest.ts'],
@@ -20,16 +22,36 @@ function normalizeKey(v: string): string {
   return String(v ?? '').trim().toLowerCase();
 }
 
-function matchType(filterType: string | undefined, intentType: string | undefined): boolean {
-  if (!filterType) return true;
-  if (!intentType) return false;
-  if (filterType.endsWith('/*')) return intentType.startsWith(filterType.slice(0, -1));
-  return filterType === intentType;
-}
-
 function matchScheme(filterScheme: string | undefined, intentScheme: string | undefined): boolean {
   if (!filterScheme) return true;
   return filterScheme === intentScheme;
+}
+
+function filterSpecificity(filter: AppIntentFilter, intent: IntentQuery): number {
+  let score = 0;
+  const filterType = normalizeMimeType(filter.type);
+  const intentType = normalizeMimeType(intent.type);
+  if (filterType && intentType) {
+    if (filterType === intentType) score += 40;
+    else if (filterType === '*/*') score += 10;
+    else if (filterType.endsWith('/*')) score += 20;
+    else score += 30;
+  }
+  if (filter.scheme && filter.scheme === intent.scheme) score += 5;
+  return score;
+}
+
+function inferShareKind(intent: IntentQuery): 'text' | 'files' | null {
+  if (intent.action === 'ACTION_SEND_MULTIPLE') return 'files';
+  if (intent.action !== 'ACTION_SEND') return null;
+  const data = intent.data;
+  if (!data) return null;
+  const embedded = data.sharePayload ?? data.payload;
+  if (Array.isArray(embedded?.files) && embedded.files.length > 0) return 'files';
+  const stream = data.stream ?? data.EXTRA_STREAM ?? data['android.intent.extra.STREAM'];
+  if (Array.isArray(stream) ? stream.length > 0 : Boolean(stream)) return 'files';
+  const text = embedded?.text ?? data.text ?? data.EXTRA_TEXT ?? data['android.intent.extra.TEXT'];
+  return typeof text === 'string' ? 'text' : null;
 }
 
 function rebuildMaps(): void {
@@ -99,16 +121,25 @@ export const PackageManagerService = {
   queryIntentActivities(intent: IntentQuery): { appId: AppId; filter: AppIntentFilter }[] {
     const action = String(intent?.action ?? '').trim();
     if (!action) return [];
-    const results: { appId: AppId; filter: AppIntentFilter }[] = [];
+    const shareKind = inferShareKind(intent);
+    // The simulator chooser displays Apps, not individual Android Activities.
+    // Keep the most specific matching filter per App to avoid duplicate tiles.
+    const matchesByApp = new Map<AppId, { appId: AppId; filter: AppIntentFilter; score: number }>();
     for (const manifest of manifests) {
       for (const filter of manifest.intentFilters ?? []) {
         if (filter.action !== action) continue;
+        if (filter.availabilityKey && !IntentAvailabilityRegistry.isAvailable(filter.availabilityKey)) continue;
+        if (shareKind && filter.shareKind && filter.shareKind !== 'both' && filter.shareKind !== shareKind) continue;
         if (!matchScheme(filter.scheme, intent.scheme)) continue;
-        if (!matchType(filter.type, intent.type)) continue;
-        results.push({ appId: manifest.id, filter });
+        if (!mimeTypesMatch(filter.type, intent.type)) continue;
+        const score = filterSpecificity(filter, intent);
+        const previous = matchesByApp.get(manifest.id);
+        if (!previous || score > previous.score) {
+          matchesByApp.set(manifest.id, { appId: manifest.id, filter, score });
+        }
       }
     }
-    return results;
+    return [...matchesByApp.values()].map(({ appId, filter }) => ({ appId, filter }));
   },
 
   resolveActivity(intent: IntentQuery): AppId | undefined {

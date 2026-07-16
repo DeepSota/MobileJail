@@ -1,4 +1,4 @@
-import React, { useState, useRef, useLayoutEffect, useEffect } from 'react';
+import React, { useState, useRef, useLayoutEffect, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { useBilibiliStore } from '../state';
 import { useVideos, useAuthors } from '../hooks/useData';
@@ -7,6 +7,15 @@ import { IcNavBack, IcImage, IcSend } from '../res/icons';
 import * as MediaService from '@/os/MediaService';
 import { useKeyboard } from '@/os/keyboard';
 import { resolveBilibiliDisplayName } from '../utils/resolveDisplayName';
+import { SharedFileImage } from '@/os/components/SharedFileImage';
+import { createViewIntent, openFileRefInViewer } from '@/os/FileShareService';
+import { useBilibiliStrings } from '../hooks/useBilibiliStrings';
+
+function formatFileSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${bytes} B`;
+}
 
 const SharedVideoBubble: React.FC<{
   videoId: string;
@@ -53,11 +62,13 @@ export const ChatPage: React.FC = () => {
   const { bindTap, bindBack } = useBilibiliGestures();
   const { height: keyboardHeight } = useKeyboard();
   const authors = useAuthors();
+  const s = useBilibiliStrings();
 
   const chat = chats.find(c => c.userId === userId);
   const displayName = resolveBilibiliDisplayName(userId || '', user, chat?.username, undefined, authors);
   const [input, setInput] = useState('');
   const [pickingImage, setPickingImage] = useState(false);
+  const [attachmentToast, setAttachmentToast] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevKeyboardHeightRef = useRef(0);
 
@@ -97,12 +108,19 @@ export const ChatPage: React.FC = () => {
     }
   };
 
+  const showAttachmentUnavailable = useCallback(() => {
+    setAttachmentToast(s.file_attachment_unavailable);
+    window.setTimeout(() => {
+      setAttachmentToast(current => current === s.file_attachment_unavailable ? '' : current);
+    }, 2500);
+  }, [s.file_attachment_unavailable]);
+
   const messages = chat?.messages || [];
   const canSend = input.trim().length > 0;
   const myId = String(user.uid || user.name);
 
   return (
-    <div className="flex flex-col h-full bg-app-surface">
+    <div className="relative flex flex-col h-full bg-app-surface">
       {/* Header */}
       <div className="pt-10 px-4 pb-3 flex items-center border-b border-gray-100">
         <button className="w-8 h-8 flex items-center justify-start" {...bindBack()}>
@@ -120,6 +138,7 @@ export const ChatPage: React.FC = () => {
           const isSystem = msg.senderId === 'system';
           const isMe = msg.senderId === myId;
           const isImage = msg.type === 'image' && msg.image;
+	          const isSharedFile = msg.fileRef;
 	          const isVideo = msg.type === 'video' && msg.sharedVideoId;
 
           if (isSystem) {
@@ -134,7 +153,54 @@ export const ChatPage: React.FC = () => {
 
           return (
             <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-              {isImage ? (
+              {isSharedFile && msg.type === 'image' ? (
+                <button
+                  type="button"
+                  {...bindTap(
+                    { kind: 'action', id: 'chat.file.open' },
+                    {
+                      params: { fileId: isSharedFile.fileId },
+                      onTrigger: () => {
+                        const intent = createViewIntent(isSharedFile);
+                        const opened = intent ? window.__OS__?.startActivity('gallery', intent) : false;
+                        if (!opened) showAttachmentUnavailable();
+                      },
+                    },
+                  )}
+                  aria-label={s.file_attachment_open}
+                  className={`max-w-[70%] rounded-2xl overflow-hidden ${isMe ? 'rounded-br-sm' : 'rounded-bl-sm'}`}
+                >
+                  <span className="relative block min-w-24 min-h-20 bg-gray-100">
+                    <span className="absolute inset-0 grid place-items-center px-2 text-center text-[12px] text-gray-500">
+                      {s.file_attachment_unavailable}
+                    </span>
+                    <SharedFileImage fileRef={isSharedFile} className="relative z-10 max-h-[11rem] object-contain w-full" alt={isSharedFile.name} />
+                  </span>
+                </button>
+              ) : isSharedFile ? (
+                <button
+                  type="button"
+                  {...bindTap(
+                    { kind: 'action', id: 'chat.file.open' },
+                    {
+                      params: { fileId: isSharedFile.fileId },
+                      onTrigger: () => {
+                        if (!openFileRefInViewer(isSharedFile)) showAttachmentUnavailable();
+                      },
+                    },
+                  )}
+                  aria-label={`${s.file_attachment_open}: ${isSharedFile.name}`}
+                  className={`max-w-[17rem] min-w-[14rem] px-3 py-3 rounded-2xl flex items-center gap-3 text-left ${isMe ? 'bg-[#00A1D6] text-white rounded-br-sm' : 'bg-gray-100 text-app-text rounded-bl-sm'}`}
+                >
+                  <span className={`w-11 h-12 rounded-lg grid place-items-center text-[11px] font-bold uppercase shrink-0 ${isMe ? 'bg-white/20' : 'bg-white text-[#00A1D6]'}`}>
+                    {isSharedFile.name.split('.').pop()?.slice(0, 4) || 'FILE'}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium truncate">{isSharedFile.name}</span>
+                    <span className={`block mt-1 text-[11px] ${isMe ? 'text-white/70' : 'text-gray-400'}`}>{formatFileSize(isSharedFile.size)}</span>
+                  </span>
+                </button>
+              ) : isImage ? (
                 <div className={`max-w-[70%] rounded-2xl overflow-hidden ${isMe ? 'rounded-br-sm' : 'rounded-bl-sm'}`}>
                   <img src={msg.image} className="max-h-[11rem] object-contain w-full" alt="" />
                 </div>
@@ -200,6 +266,11 @@ export const ChatPage: React.FC = () => {
           <IcSend size={18} />
         </button>
       </div>
+      {attachmentToast && (
+        <div role="status" className="absolute left-1/2 bottom-20 z-50 -translate-x-1/2 rounded-full bg-black/75 px-4 py-2 text-[13px] text-white shadow-lg">
+          {attachmentToast}
+        </div>
+      )}
     </div>
   );
 };

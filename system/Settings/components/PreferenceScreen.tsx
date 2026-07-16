@@ -21,13 +21,19 @@ import { AppPermissionDetailPage } from './AppPermissionDetailPage';
 import { LauncherSettingsPage } from './LauncherSettingsPage';
 import { SilentModeSettingsPage } from './SilentModeSettingsPage';
 import { LanguagePickerPage } from './LanguagePickerPage';
+import { SecurityPrivacyPage } from './SecurityPrivacyPage';
+import { SafetyEmergencyPage } from './SafetyEmergencyPage';
+import { ApplicationManagementPage } from './ApplicationManagementPage';
+import { ApplicationDetailPage } from './ApplicationDetailPage';
+import { DateTimeRegionPage } from './DateTimeRegionPage';
 import type { SettingsItem, SettingsMainSection, SettingsPage } from '../types';
 import { ClipboardService } from '../../../os/ClipboardService';
 import { routeGetPreference } from '../../../os/managers/registry';
 import { getOsDataRevision, subscribeOsDataRevision } from '../../../os/simState';
 import { useSettingsStrings } from '../res/useSettingsStrings';
-import { useSettingsStore, selectPagesData, selectPagesLoading, selectPagesError } from '../state';
+import { useSettingsStore, selectPagesData, selectPagesLoading, selectPagesError, usePreferenceValue } from '../state';
 import { useSettingsGestures } from '../hooks/useSettingsGestures';
+import { resolveSettingsPageId, resolveSettingsPreferenceKey } from '../data/settingsMappings';
 
 const PAGE_ID_ALIASES: Record<string, { targetId: string; title?: string }> = {
   // System: this page is built dynamically; we reuse a close static screen.
@@ -68,6 +74,19 @@ const THEME_STORE_KEYS = new Set<string>([
   'wallpaper_carousel',
 ]);
 
+/** Switch that is disabled when its dependency preference is false */
+const DependentSwitch: React.FC<{
+  title: string;
+  summary?: string;
+  defaultChecked?: boolean;
+  settingKey: string;
+  showDivider?: boolean;
+  dependency?: string;
+}> = ({ dependency, ...props }) => {
+  const [depMet] = usePreferenceValue<boolean>(dependency || '', false);
+  return <SwitchPreference {...props} disabled={dependency ? !depMet : false} />;
+};
+
 function formatValue(v: any, s: { on: string; off: string }): string | undefined {
   if (v === undefined || v === null) return undefined;
   if (typeof v === 'boolean') return v ? s.on : s.off;
@@ -78,8 +97,9 @@ function formatValue(v: any, s: { on: string; off: string }): string | undefined
 
 /** Lookup a page by id: hand-written overrides first, then auto-generated */
 function findPage(pageId: string, pages: Record<string, SettingsPage> | null) {
-  const alias = PAGE_ID_ALIASES[pageId];
-  const effectiveId = alias?.targetId || pageId;
+  const resolvedId = resolveSettingsPageId(pageId);
+  const alias = PAGE_ID_ALIASES[resolvedId];
+  const effectiveId = alias?.targetId || resolvedId;
 
   // Prefer hand-written overrides when present (to emulate programmatic pages)
   const base = SETTINGS_PAGE_OVERRIDES[effectiveId] || pages?.[effectiveId] || undefined;
@@ -87,7 +107,7 @@ function findPage(pageId: string, pages: Record<string, SettingsPage> | null) {
 
   if (alias) {
     // Keep the requested id for routing, but reuse the aliased categories.
-    return { ...base, id: pageId, title: alias.title || base.title };
+    return { ...base, id: resolvedId, title: alias.title || base.title };
   }
   return base;
 }
@@ -124,7 +144,8 @@ function makeExternalPageId(title: string, key?: string) {
 
 /** Generic preference screen renderer - driven by page data from config */
 export const PreferenceScreenPage: React.FC = () => {
-  const { pageId } = useParams<{ pageId: string }>();
+  const { pageId: routePageId } = useParams<{ pageId: string }>();
+  const pageId = routePageId ? resolveSettingsPageId(routePageId) : routePageId;
   const { bindTap, go } = useSettingsGestures();
   const { s, t } = useSettingsStrings();
   const data = useSettingsStore(selectPagesData);
@@ -206,6 +227,39 @@ export const PreferenceScreenPage: React.FC = () => {
   if (pageId === 'locale_picker') {
     return <LanguagePickerPage />;
   }
+  if (pageId === 'applications_settings') {
+    return <ApplicationManagementPage />;
+  }
+  if (pageId?.startsWith('application_detail__')) {
+    const raw = pageId.slice('application_detail__'.length);
+    return <ApplicationDetailPage appId={safeDecodeURIComponent(raw)} />;
+  }
+  if (
+    pageId === 'date_time_prefs' ||
+    pageId === 'time_zone_prefs' ||
+    pageId === 'date_time_region'
+  ) {
+    return <DateTimeRegionPage />;
+  }
+  if (
+    pageId === 'security_privacy_settings' ||
+    pageId === 'security_settings' ||
+    pageId === 'security_settings_common' ||
+    pageId === 'security_dashboard_page' ||
+    pageId === 'privacy_dashboard_settings' ||
+    pageId === 'privacy_dashboard_page' ||
+    pageId === 'more_security_privacy_settings'
+  ) {
+    return <SecurityPrivacyPage />;
+  }
+  if (
+    pageId === 'safety_and_emergency_screen' ||
+    pageId === 'emergency_gesture_settings' ||
+    pageId === 'miui_sos_settings' ||
+    pageId === 'default_emergency_settings'
+  ) {
+    return <SafetyEmergencyPage />;
+  }
   if (pageId === 'notification_managing') {
     return <NotificationManagingPage />;
   }
@@ -285,7 +339,10 @@ export const PreferenceScreenPage: React.FC = () => {
   }
 
   const getTargetPageForItem = (item: SettingsItem): string | undefined => {
-    if (item.targetPage) return item.targetPage;
+    if (page.id === 'other_personal_settings' && item.key === 'locale_settings') {
+      return 'date_time_region';
+    }
+    if (item.targetPage) return resolveSettingsPageId(item.targetPage);
 
     // Heuristics: some pages are wired in code (no fragment/intent in XML)
     if (page.id === 'accessibility_text_reading_options') {
@@ -323,9 +380,9 @@ export const PreferenceScreenPage: React.FC = () => {
 
     // Generic fallback: many preference keys map to an internal page id.
     if (item.key) {
-      if (findPage(item.key, pages)) return item.key;
-      if (findPage(`${item.key}_settings`, pages)) return `${item.key}_settings`;
-      if (findPage(`${item.key}_screen`, pages)) return `${item.key}_screen`;
+      if (findPage(item.key, pages)) return resolveSettingsPageId(item.key);
+      if (findPage(`${item.key}_settings`, pages)) return resolveSettingsPageId(`${item.key}_settings`);
+      if (findPage(`${item.key}_screen`, pages)) return resolveSettingsPageId(`${item.key}_screen`);
     }
 
     return undefined;
@@ -357,7 +414,9 @@ export const PreferenceScreenPage: React.FC = () => {
     const isLast = idx === total - 1;
     const settingKey = item.key || `${page.id}__${item.type}__${idx}`;
     const isInfoPage = INFO_VALUE_PAGES.has(page.id);
-    const dynamicValue = isInfoPage && item.key ? formatValue(routeGetPreference(item.key), s) : undefined;
+    const dynamicValue = isInfoPage && item.key
+      ? formatValue(routeGetPreference(resolveSettingsPreferenceKey(item.key)), s)
+      : undefined;
     const tTitle = item.title ? t(item.title) : item.title;
     const tSummary = item.summary ? t(item.summary) : item.summary;
 
@@ -379,6 +438,19 @@ export const PreferenceScreenPage: React.FC = () => {
     switch (item.type) {
       case 'switch':
       case 'checkbox':
+        if (item.dependency) {
+          return (
+            <DependentSwitch
+              key={item.key || idx}
+              title={tTitle}
+              summary={tSummary}
+              defaultChecked={item.defaultValue === 'true'}
+              settingKey={settingKey}
+              showDivider={!isLast}
+              dependency={item.dependency}
+            />
+          );
+        }
         return (
           <SwitchPreference
             key={item.key || idx}
@@ -431,11 +503,18 @@ export const PreferenceScreenPage: React.FC = () => {
               value={dynamicValue || undefined}
               showChevron={false}
               showDivider={!isLast}
-              onClick={() => {
-                if (!dynamicValue) return;
-                ClipboardService.copyText(dynamicValue, 'settings');
-                showToast(s.copied_to_clipboard);
-              }}
+              itemProps={dynamicValue
+                ? bindTap<HTMLDivElement>(
+                    { kind: 'action', id: 'settings.info.copy' },
+                    {
+                      params: { key: item.key },
+                      onTrigger: () => {
+                        ClipboardService.copyText(dynamicValue, 'settings');
+                        showToast(s.copied_to_clipboard);
+                      },
+                    },
+                  )
+                : undefined}
             />
           );
         }
@@ -467,6 +546,12 @@ export const PreferenceScreenPage: React.FC = () => {
         const target = getTargetPageForItem(item);
         const hasInfoValue = isInfoPage && !!item.key && !!dynamicValue;
         const shouldCopyValue = hasInfoValue && !target;
+        const opensThemeStore = item.type === 'preference' && !!item.key && THEME_STORE_KEYS.has(item.key);
+        const navigationTarget = target || (
+          item.type === 'preference' && !opensThemeStore
+            ? makeExternalPageId(item.title || s.settings, item.key || '')
+            : undefined
+        );
         // Filter out "null" or placeholder summaries (resource keys / placeholders)
         const cleanSummary = (() => {
           const s = item.summary?.trim();
@@ -484,23 +569,34 @@ export const PreferenceScreenPage: React.FC = () => {
             title={tTitle}
             summary={cleanSummary}
             value={hasInfoValue ? dynamicValue : undefined}
-            showChevron={!!target}
+            showChevron={!!navigationTarget || opensThemeStore}
             showDivider={!isLast}
-            onClick={() => {
-              if (shouldCopyValue) {
-                ClipboardService.copyText(dynamicValue!, 'settings');
-                showToast(s.copied_to_clipboard);
-                return;
-              }
-              handleItemClick(item);
-            }}
             itemProps={
-              target
-                ? bindTap<HTMLDivElement>('page.open', {
-                    params: { pageId: target },
-                    onTrigger: () => handleItemClick(item),
-                  })
-                : undefined
+              shouldCopyValue
+                ? bindTap<HTMLDivElement>(
+                    { kind: 'action', id: 'settings.info.copy' },
+                    {
+                      params: { key: item.key! },
+                      onTrigger: () => {
+                        ClipboardService.copyText(dynamicValue!, 'settings');
+                        showToast(s.copied_to_clipboard);
+                      },
+                    },
+                  )
+                : opensThemeStore
+                  ? bindTap<HTMLDivElement>(
+                      { kind: 'action', id: 'settings.themeStore.open' },
+                      {
+                        params: { key: item.key! },
+                        onTrigger: () => handleItemClick(item),
+                      },
+                    )
+                  : navigationTarget
+                    ? bindTap<HTMLDivElement>('page.open', {
+                        params: { pageId: navigationTarget },
+                        onTrigger: () => handleItemClick(item),
+                      })
+                    : undefined
             }
           />
         );
@@ -527,7 +623,11 @@ export const PreferenceScreenPage: React.FC = () => {
   return (
     <div className="h-full bg-app-bg flex flex-col">
       <SettingsHeader title={displayTitle} />
-      <div className="flex-1 overflow-y-auto no-scrollbar pb-8">
+      <div
+        className="flex-1 overflow-y-auto no-scrollbar pb-8"
+        data-scroll-container="main"
+        data-scroll-direction="vertical"
+      >
         {page.categories.map((category, catIdx) => {
           const visibleItems = category.items.filter((item) => {
             if (item.type === 'footer') {

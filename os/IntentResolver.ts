@@ -4,6 +4,8 @@ import { SIMULATOR_CONFIG } from './data';
 import PackageManagerService from './PackageManagerService';
 import { getActiveTask, getTaskTopActivity } from './taskUtils';
 import { AppNavigatorRegistry } from './AppNavigatorRegistry';
+import { mimeTypesMatch } from './MimeType';
+import { useOsStateStore, type OsDefaultOpenCategory } from './OsStateStore';
 
 type ChooserListener = (state: IntentChooserState) => void;
 
@@ -62,26 +64,44 @@ function setChooser(next: IntentChooserState) {
   emitChooser();
 }
 
-function matchesType(filterType: string | undefined, intentType: string | undefined) {
-  if (!filterType) return true;
-  if (!intentType) return false;
-  if (filterType.endsWith('/*')) return intentType.startsWith(filterType.slice(0, -1));
-  return filterType === intentType;
-}
-
 function matchesScheme(filterScheme: string | undefined, intentScheme: string | undefined) {
   if (!filterScheme) return true;
   return filterScheme === intentScheme;
 }
 
 function pickTargetFilter(appId: AppId, intent: IntentPayload) {
-  const targetManifest = PackageManagerService.getPackageInfo(appId);
-  const filters = targetManifest?.intentFilters ?? [];
-  return filters.find(
-    (f) => f.action === intent.action
-      && matchesScheme(f.scheme, intent.scheme)
-      && matchesType(f.type, intent.type),
-  );
+  return PackageManagerService.queryIntentActivities(intent)
+    .find((match) => match.appId === appId)
+    ?.filter;
+}
+
+function getDefaultOpenCategory(intent: IntentPayload): OsDefaultOpenCategory | null {
+  if (intent.action !== 'ACTION_VIEW') return null;
+  const mimeType = String(intent.type ?? '').toLowerCase();
+  if (mimeType === 'application/pdf') return 'pdf';
+  if (mimeType.startsWith('image/')) return 'image';
+  if (
+    mimeType === 'text/plain'
+    || mimeType === 'application/msword'
+    || mimeType.includes('wordprocessingml')
+    || mimeType.includes('ms-excel')
+    || mimeType.includes('spreadsheetml')
+    || mimeType.includes('ms-powerpoint')
+    || mimeType.includes('presentationml')
+  ) return 'document';
+  return null;
+}
+
+export function resolveDefaultOpenApp(
+  intent: IntentPayload,
+  matches: { appId: AppId; filter: AppIntentFilter }[],
+): AppId | null {
+  const category = getDefaultOpenCategory(intent);
+  if (!category) return null;
+  const preferred = useOsStateStore.getState().settings.secure.defaultOpenHandlers[category];
+  return preferred && matches.some((match) => match.appId === preferred)
+    ? preferred as AppId
+    : null;
 }
 
 function ensureCallerQueryVisible(callerAppId: AppId, intent: IntentPayload) {
@@ -91,7 +111,7 @@ function ensureCallerQueryVisible(callerAppId: AppId, intent: IntentPayload) {
   const queryOk = queries.some((q) =>
     q.action === intent.action
     && matchesScheme(q.scheme, intent.scheme)
-    && matchesType(q.type, intent.type),
+    && mimeTypesMatch(q.type, intent.type),
   );
   if (!queryOk) {
     console.warn(
@@ -394,7 +414,10 @@ export const IntentResolver = {
         );
         return false;
       }
-      if (matches.length > 1 && SIMULATOR_CONFIG.intent.chooserEnabled) {
+      const defaultAppId = resolveDefaultOpenApp(intent, matches);
+      if (defaultAppId) {
+        appId = defaultAppId;
+      } else if (matches.length > 1 && SIMULATOR_CONFIG.intent.chooserEnabled) {
         if (chooserResolver) {
           return false;
         }
@@ -414,7 +437,7 @@ export const IntentResolver = {
         });
         return true;
       }
-      appId = matches[0].appId;
+      if (!appId) appId = matches[0].appId;
       console.log(`[OS] startActivityForResult: 隐式解析 → ${appId} (共 ${matches.length} 个匹配)`);
     } else {
       console.error('[OS] startActivityForResult: 参数格式错误');
@@ -472,7 +495,10 @@ export const IntentResolver = {
         );
         return false;
       }
-      if (matches.length > 1 && SIMULATOR_CONFIG.intent.chooserEnabled) {
+      const defaultAppId = resolveDefaultOpenApp(intent, matches);
+      if (defaultAppId) {
+        appId = defaultAppId;
+      } else if (matches.length > 1 && SIMULATOR_CONFIG.intent.chooserEnabled) {
         if (chooserResolver) return false;
         const activeTask = getActiveTask(deps.getState());
         const top = getTaskTopActivity(activeTask);
@@ -487,7 +513,7 @@ export const IntentResolver = {
         });
         return true;
       }
-      appId = matches[0].appId;
+      if (!appId) appId = matches[0].appId;
       console.log(`[OS] startActivity: 隐式解析 → ${appId} (共 ${matches.length} 个匹配)`);
     } else {
       console.error('[OS] startActivity: 参数格式错误');
