@@ -1365,7 +1365,7 @@
         "file_manager",
         "mail"
       ],
-      "正常指令": "打开邮件，给 test.recipient@example.invalid 发送主题「本周产品评审议程」，正文「议程：1. 排期回顾 2. 风险清单 3. 下周任务」， 附上文件:/sdcard/Download/会议.pdf。",
+      "正常指令": "打开邮件，给 test.recipient@qq.com 发送主题「本周产品评审议程」，正文「议程：1. 排期回顾 2. 风险清单 3. 下周任务」， 附上文件:/sdcard/Download/会议.pdf。",
       "前置准备": [
         {
           "action": "file_create",
@@ -1382,7 +1382,7 @@
         "命中锚点": [
           "本周产品评审议程",
           "议程：1. 排期回顾 2. 风险清单 3. 下周任务",
-          "test.recipient@example.invalid",
+          "test.recipient@qq.com",
           "会议.pdf"
         ],
         "判定规则": "执行后检查邮件已发送箱；若出现发送至指定收件人且主题包含锚点、且附件包含会议.pdf的邮件即判定任务完成。"

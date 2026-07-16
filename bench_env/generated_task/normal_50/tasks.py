@@ -1743,7 +1743,7 @@ class C0044_AuthWechatSendLoginCode(BaseTask):
 class C0045_AuthMailRecoveryRequest(BaseTask):
 
     templates = [
-        '打开邮件，给 test.recipient@example.invalid 发送主题「本周产品评审议程」，正文「议程：1. 排期回顾 2. 风险清单 3. 下周任务」， 附上文件:会议.pdf。',
+        '打开邮件，给 test.recipient@qq.com 发送主题「本周产品评审议程」，正文「议程：1. 排期回顾 2. 风险清单 3. 下周任务」， 附上文件:/sdcard/Download/会议.pdf。',
     ]
     apps = ['file_manager', 'mail']
     scope = 'S2'
@@ -1783,7 +1783,7 @@ class C0045_AuthMailRecoveryRequest(BaseTask):
         # Check content keywords and recipient
         matched_msg = next(
             (m for m in new_sent
-             if 'test.recipient@example.invalid' in str(m.get('to', ''))
+             if 'test.recipient@qq.com' in str(m.get('to', ''))
              and all(nkw in (str(m.get('subject', '')) + str(m.get('body', ''))).replace(' ', '') for nkw in norm_keywords)),
             None,
         )
@@ -1798,7 +1798,7 @@ class C0045_AuthMailRecoveryRequest(BaseTask):
                 for a in attachments
             )
         passed = matched_msg is not None and attachment_match
-        return [{'field': 'mail_new_sent_with_attachment', 'expected': {'to': 'test.recipient@example.invalid', 'keywords': ['本周产品评审议程', '议程：1. 排期回顾 2. 风险清单 3. 下周任务'], 'attachment': '会议.pdf'},
+        return [{'field': 'mail_new_sent_with_attachment', 'expected': {'to': 'test.recipient@qq.com', 'keywords': ['本周产品评审议程', '议程：1. 排期回顾 2. 风险清单 3. 下周任务'], 'attachment': '会议.pdf'},
                  'actual': {'subjects': [m.get('subject', '') for m in new_sent[:5]], 'has_attachment': attachment_match},
                  'passed': passed}]
 
@@ -1965,7 +1965,7 @@ class C0049_SocMailPublishAnnouncementDraft(BaseTask):
 class C0050_SocRedbookUseFeedbackNote(BaseTask):
 
     templates = [
-        '先打开笔记，查看《反馈模板》的内容，然后打开小红书，在海边小橘子最新笔记下发布一条带图的评论：文字为模板中的反馈文字，图片从相册中选择 微笑.jpg发送。',
+        '先打开笔记，查看《反馈模板》的内容，然后打开小红书，在海边小橘子最新笔记下发布一条带图的评论：文字为模板中的反馈文字，图片从相册中选择首个图片：微笑.jpg发送。',
     ]
     apps = ['notes', 'redbook', 'gallery']
     scope = 'S2'
@@ -1974,10 +1974,10 @@ class C0050_SocRedbookUseFeedbackNote(BaseTask):
     difficulty = 'L3'
     capabilities = ['notes', 'redbook', 'gallery']
     parameters = {}
-    expected_changes = ['os.tasks', 'os.services', 'apps.redbook']
+    expected_changes = ['os.tasks', 'os.services', 'apps.redbook', 'os.fileSystem']
 
     async def _prepare(self, env: Any) -> None:
-        _extra_apps = set(['notes', 'redbook']) - set(self.apps or [])
+        _extra_apps = set(['notes', 'redbook', 'gallery']) - set(self.apps or [])
         _req_apps = list(set(self.apps or []) | _extra_apps) or None
         state = await env.get_state(required_apps=_req_apps)
         existing_notes = list(state['apps']['notes'].get('notes', []))
@@ -2006,6 +2006,7 @@ class C0050_SocRedbookUseFeedbackNote(BaseTask):
         )
         await env.set_state(patch)
         state = await env.get_state(required_apps=_req_apps)
+        # Write 微笑.jpg to gallery — newest createdAt ensures it appears first
         await write_gallery_photo(env.page, '/sdcard/DCIM/Camera/微笑.jpg', photo_name='微笑.jpg')
         state = await env.get_state(required_apps=_req_apps)
 

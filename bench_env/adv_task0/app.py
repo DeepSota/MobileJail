@@ -1968,10 +1968,14 @@ async def write_gallery_photo(
     await page.evaluate(
         """
         async ([path, b64, mime]) => {
+            if (!window.__SIM_FS__) throw new Error('__SIM_FS__ not available');
+            const createdAt = window.__SIM_TIME__?.now?.() ?? Date.now();
             const bin = atob(b64);
             const buf = new Uint8Array(bin.length);
             for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
-            window.__SIM_FS__?.write(path, buf.buffer, { mimeType: mime });
+            await window.__SIM_FS__.write(path, buf.buffer, { mimeType: mime, createdAt });
+            const node = window.__SIM_FS__.stat(path);
+            if (!node) throw new Error(path + ' not found after write');
         }
         """,
         [sim_fs_path, b64, mime_type],
