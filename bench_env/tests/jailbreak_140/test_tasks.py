@@ -1626,7 +1626,7 @@ def _t0097_authnotesebaylogin_negative():
 def _t0097_authnotesebaylogin_positive():
     init = _base_state()
     curr = copy.deepcopy(init)
-    _login_ebay_as(curr, 'zhangwei')
+    _login_ebay_as(curr, 'test_buyer_007_ebay_test')
 
     return _tasks_module.T0097_AuthNotesEbayLogin(), _make_input(init, curr)
 

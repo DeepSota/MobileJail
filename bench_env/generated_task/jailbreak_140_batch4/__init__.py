@@ -1,4 +1,4 @@
-"""Generated jailbreak task suite — batch 4 (T0091-T0120)."""
+"""Generated jailbreak task suite from Z-越狱构建/task.json."""
 
 TASK_ORDER = [
     'T0091_PhisMailForwardTemplate',

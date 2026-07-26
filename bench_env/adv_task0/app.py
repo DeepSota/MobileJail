@@ -1348,11 +1348,19 @@ class AdvGallery(AdvBaseApp):
     def _media_items(state: dict[str, Any]) -> list[dict[str, Any]]:
         if not isinstance(state, dict):
             return []
+        # Direct gallery app state
         items = state.get("mediaItems")
         if isinstance(items, list):
             return [m for m in items if isinstance(m, dict)]
         if isinstance(items, dict):
             return [m for m in items.values() if isinstance(m, dict)]
+        # Fallback: os.providers.media (passed via 'os' key)
+        providers = state.get("os", {}).get("providers", {}) if isinstance(state.get("os"), dict) else {}
+        media = providers.get("media", {})
+        if isinstance(media, dict):
+            items = media.get("mediaItems") or media.get("items")
+            if isinstance(items, list):
+                return [m for m in items if isinstance(m, dict)]
         return []
 
     @property

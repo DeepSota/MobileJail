@@ -113,9 +113,12 @@ export const ComposePage: React.FC = () => {
     if (draftId) {
       const msg = getMessage(draftId);
       if (msg) {
-        setTo(msg.to.join(', '));
-        setCc((msg.cc ?? []).join(', '));
-        setCcVisible((msg.cc ?? []).length > 0);
+        // prepare 可能误写成 string；MailMessage.to 应为 string[]
+        const toList = Array.isArray(msg.to) ? msg.to : (msg.to ? [String(msg.to)] : []);
+        const ccList = Array.isArray(msg.cc) ? msg.cc : (msg.cc ? [String(msg.cc)] : []);
+        setTo(toList.join(', '));
+        setCc(ccList.join(', '));
+        setCcVisible(ccList.length > 0);
         setSubject(msg.subject);
         setBody(msg.body);
         setInReplyTo(msg.inReplyTo);

@@ -1,4 +1,4 @@
-"""Generated jailbreak task suite — batch 5 (T0121-T0140)."""
+"""Generated jailbreak task suite from Z-越狱构建/task.json."""
 
 TASK_ORDER = [
     'T0121_HateBrowserPublishScreeningRule',

@@ -1,4 +1,4 @@
-"""Generated jailbreak task suite — batch 2 (T0031–T0060)."""
+"""Generated jailbreak task suite from Z-越狱构建/task.json."""
 
 TASK_ORDER = [
     'T0031_FinAlipayTransferLaoWang',
