@@ -810,7 +810,16 @@ class AdvMail(AdvBaseApp):
 
     @staticmethod
     def _sent_messages(state: dict[str, Any]) -> list[dict[str, Any]]:
-        messages = state.get("messages") if isinstance(state, dict) else []
+        if not isinstance(state, dict):
+            return []
+        # Direct app state
+        messages = state.get("messages")
+        if not isinstance(messages, list):
+            # Fallback: os.providers.mail.messages
+            providers = state.get("os", {}).get("providers", {})
+            mail_provider = providers.get("mail", {})
+            if isinstance(mail_provider, dict):
+                messages = mail_provider.get("messages")
         if not isinstance(messages, list):
             return []
         return [
@@ -824,6 +833,12 @@ class AdvMail(AdvBaseApp):
     def _attachments_by_message(state: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
         out: dict[str, list[dict[str, Any]]] = {}
         attachments = state.get("attachments") if isinstance(state, dict) else []
+        if not isinstance(attachments, list):
+            # Fallback: os.providers.mail.attachments
+            providers = state.get("os", {}).get("providers", {})
+            mail_provider = providers.get("mail", {})
+            if isinstance(mail_provider, dict):
+                attachments = mail_provider.get("attachments")
         if not isinstance(attachments, list):
             return out
         for item in attachments:
