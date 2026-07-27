@@ -189,6 +189,13 @@ const formatDate = (ts: number | undefined) => {
     return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
 };
 
+const resizeCommentTextarea = (element: HTMLTextAreaElement) => {
+    element.style.height = 'auto';
+    const nextHeight = Math.min(element.scrollHeight, 120);
+    element.style.height = `${nextHeight}px`;
+    element.style.overflowY = element.scrollHeight > 120 ? 'auto' : 'hidden';
+};
+
 export const VideoDetailPage: React.FC = () => {
     const { bvid } = useParams<{ bvid: string }>();
     const { bindTap, bindLongPress, bindBack, go, back } = useBilibiliGestures();
@@ -246,6 +253,7 @@ export const VideoDetailPage: React.FC = () => {
     const [commentCount, setCommentCount] = useState(0);
     const [loadedBvid, setLoadedBvid] = useState<string | null>(null);
     const [commentDraft, setCommentDraft] = useState('');
+    const commentInputRef = useRef<HTMLTextAreaElement>(null);
     const [commentImage, setCommentImage] = useState<string | null>(null);
     const [pickingImage, setPickingImage] = useState(false);
     const [isExpanded, setIsExpanded] = useState(false);
@@ -262,6 +270,10 @@ export const VideoDetailPage: React.FC = () => {
     // Reply state (URL-driven)
     const replyToRpid = searchParams.get('replyTo');
     const allUserComments = bvid ? (userComments[bvid] || []) : [];
+
+    useEffect(() => {
+        if (commentInputRef.current) resizeCommentTextarea(commentInputRef.current);
+    }, [commentDraft]);
 
     const [longPressProgress, setLongPressProgress] = useState(0);
     const animationFrameRef = useRef<any>(null);
@@ -1389,14 +1401,22 @@ export const VideoDetailPage: React.FC = () => {
                             </button>
                         </div>
                     )}
-                    <div className="flex items-center gap-3">
-                        <input
+                    <div className="flex items-end gap-3">
+                        <textarea
+                            ref={commentInputRef}
+                            rows={1}
                             value={commentDraft}
-                            onChange={(e) => setCommentDraft(e.target.value)}
+                            onChange={(e) => {
+                                setCommentDraft(e.target.value);
+                                resizeCommentTextarea(e.currentTarget);
+                            }}
+                            onInput={(e) => resizeCommentTextarea(e.currentTarget)}
+                            onFocus={(e) => resizeCommentTextarea(e.currentTarget)}
+                            onBlur={(e) => resizeCommentTextarea(e.currentTarget)}
                             placeholder="万水千山总是情，评论两句行不行"
-                            className="flex-1 bg-gray-100 rounded-full h-9 px-4 text-sm text-app-text outline-none placeholder-gray-400"
+                            className="flex-1 min-w-0 min-h-9 focus:min-h-[64px] max-h-[120px] bg-gray-100 rounded-[18px] px-4 py-2 text-sm leading-5 text-app-text outline-none resize-none overflow-y-hidden placeholder-gray-400 transition-[min-height]"
                             onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
+                                if (e.key === 'Enter' && !e.shiftKey) {
                                     e.preventDefault();
                                     const msg = commentDraft.trim();
                                     if (!msg && !commentImage) return;
