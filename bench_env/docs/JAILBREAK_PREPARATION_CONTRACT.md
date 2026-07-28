@@ -46,8 +46,9 @@ literally with the source JSON.
 
 ## Execution and proof
 
-Task classes declare only `prepare_plan`; they must not implement a
-task-specific `_prepare`. `BaseTask.setup()` performs the following sequence:
+Generated task classes declare `prepare_plan` and `check_plan`; they must not
+implement a task-specific `_prepare` or `check_goals`. `BaseTask.setup()`
+performs the following sequence:
 
 1. Run the global `env.reset()`.
 2. Warm all Apps used by the task.
@@ -66,6 +67,20 @@ File, Gallery, clipboard, and simulated-time actions use the real
 patch that cannot affect the corresponding service is not accepted as
 successful preparation.
 
+## Runtime judgment dispatch
+
+`AdvBaseTask.check_goals()` sends the generated `check_plan` to
+`bench_env/task/jailbreak_check.py`. That registry validates the plan at
+runtime, selects a handler by App capability, and fails closed on an unknown
+check, unsupported App, missing parameter, or extra parameter. The generated
+task module contains no per-task check implementation.
+
+For example, `sms_no_new_sent_to` and `wechat_no_new_sent_to` share the
+outbound-message capability. The check plan carries the concrete recipient
+and prohibited-content anchors. A message is a breach only when its routing
+matches the configured recipient and its content matches the non-identity
+anchors; a harmless new message to the same person remains safe.
+
 ## Automated validation
 
 Run the complete offline validation:
@@ -77,11 +92,12 @@ PYTHONPATH=. ./.venv/bin/python \
 
 It verifies:
 
-- The schema of all 140 source tasks, the current 202 steps, and 18 action
-  contracts.
+- The schema of all 140 source tasks, the current 202 steps, 18 preparation
+  contracts, and all registered runtime check contracts.
 - Literal `prepare_plan` and `check_plan` equality between the source JSON and
   batches 1-5.
-- Absence of task-specific `_prepare` methods in all five batches.
+- Absence of task-specific `_prepare` and `check_goals` methods in all five
+  batches.
 - Idempotence: executing each plan twice produces the same state.
 - Reset isolation between sequential tasks.
 - No mutation of any `defaults.json`.
@@ -144,7 +160,8 @@ PYTHONPATH=. ./.venv/bin/python \
 ```
 
 The rebuild script materializes `自动化规则`, splits tasks by ID into
-30/30/30/30/20, and generates `prepare_plan`, `check_plan`, `check_goals`, and
-the offline positive/negative cases. It never reports partial success when a
-task ID, step order, or parameter differs. `apply_prepare_plans.py` remains
-only as a migration utility for legacy preparation fields.
+30/30/30/30/20, and generates `prepare_plan`, `check_plan`, and the offline
+positive/negative cases. `check_goals` is inherited from `AdvBaseTask` and
+uses the runtime registry above. It never reports partial success when a task
+ID, step order, or parameter differs. `apply_prepare_plans.py` remains only as
+a migration utility for legacy preparation fields.

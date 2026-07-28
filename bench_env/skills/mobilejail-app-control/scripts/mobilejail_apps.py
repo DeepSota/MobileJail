@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 import posixpath
 import time
 from dataclasses import dataclass
@@ -122,13 +123,127 @@ def _find_nested_key(value: Any, key: str) -> Any:
     return None
 
 
+_PROMPT_SKIP_KEYS = {
+    "_temp",
+    "allPages",
+    "navigation",
+    "navigationGraph",
+    "pageDefinitions",
+    "pages",
+    "pagesData",
+    "rawPages",
+    "ui_elements",
+}
+
+
+def _compact_prompt_value(
+    value: Any,
+    *,
+    depth: int = 0,
+    max_depth: int = 8,
+    max_items: int = 60,
+    max_string: int = 2_000,
+) -> Any:
+    """Bound prompt context while preserving both prepared head and tail data."""
+    if depth >= max_depth:
+        if isinstance(value, (dict, list)):
+            return f"<{type(value).__name__} omitted at depth {depth}>"
+        return value
+    if isinstance(value, str):
+        if len(value) <= max_string:
+            return value
+        return value[:max_string] + f"... <{len(value) - max_string} chars omitted>"
+    if isinstance(value, dict):
+        out: dict[str, Any] = {}
+        for key, child in value.items():
+            key_text = str(key)
+            if key_text in _PROMPT_SKIP_KEYS:
+                continue
+            out[key_text] = _compact_prompt_value(
+                child,
+                depth=depth + 1,
+                max_depth=max_depth,
+                max_items=max_items,
+                max_string=max_string,
+            )
+        return out
+    if isinstance(value, (list, tuple)):
+        items = list(value)
+        if len(items) > max_items:
+            half = max(1, max_items // 2)
+            items = [
+                *items[:half],
+                f"<{len(value) - half * 2} middle items omitted>",
+                *items[-half:],
+            ]
+        return [
+            _compact_prompt_value(
+                child,
+                depth=depth + 1,
+                max_depth=max_depth,
+                max_items=max_items,
+                max_string=max_string,
+            )
+            for child in items
+        ]
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    return repr(value)
+
+
 class Runtime:
     def __init__(self, env: Any):
         if not hasattr(env, "page") or not hasattr(env, "open_app"):
             raise TypeError("env must be a live MobileGymEnv-like object")
         self.env = env
 
+    async def ready(
+        self,
+        *,
+        repair: bool = False,
+        timeout_ms: int = 20_000,
+        attempts: int = 3,
+    ) -> dict[str, Any]:
+        """Require the state, filesystem, OS, and live store backends.
+
+        ``repair=True`` is intended for runner preflight before task setup. It
+        may rebuild a failed page/context, so it must not be used after task
+        preparation has injected task-local state.
+        """
+        attempts = max(1, int(attempts if repair else 1))
+        last_error: Exception | None = None
+        for attempt in range(attempts):
+            try:
+                await self.env.page.wait_for_function(
+                    """() => Boolean(
+                        window.__SIM__?.getState
+                        && window.__SIM_FS__
+                        && window.__OS__?.openApp
+                        && window.__BENCH_STORES__ instanceof Map
+                    )""",
+                    timeout=timeout_ms,
+                )
+                return await self.env.page.evaluate(
+                    """() => ({
+                        storeCount: window.__BENCH_STORES__?.size ?? 0,
+                        storageIsolation: window.__STORAGE_ISOLATION__ ?? null,
+                    })"""
+                )
+            except Exception as exc:
+                last_error = exc
+                if not repair or attempt + 1 >= attempts:
+                    break
+                worker_id = max(0, int(getattr(self.env, "worker_id", 0)))
+                await asyncio.sleep(0.4 * (attempt + 1) + 0.1 * (worker_id % 5))
+                await self.env.restart()
+        raise SkillError(
+            "MobileJail Skill runtime is not ready: required __SIM__, __SIM_FS__, "
+            "__OS__, or __BENCH_STORES__ backend is unavailable"
+            + (f" ({type(last_error).__name__}: {last_error})" if last_error else "")
+        )
+
     async def _open(self, app_id: str) -> None:
+        await self.ready(repair=False)
         await self.env.open_app(app_id, wait_stable=True)
 
     async def _state(self, app_id: str) -> dict[str, Any]:
@@ -139,6 +254,112 @@ class Runtime:
         # a few milliseconds elapsed between the two snapshots.
         stable.get("os", {}).pop("time", None)
         return stable
+
+    async def app_state_view(self, app_id: str) -> dict[str, Any]:
+        """Return an app-friendly view without breaking full-state callers."""
+        snapshot = await self._state(app_id)
+        app_state = copy.deepcopy(
+            snapshot.get("apps", {}).get(app_id, {})
+        )
+        os_state = copy.deepcopy(snapshot.get("os", {}))
+        providers = os_state.get("providers", {})
+        provider_id = {
+            "contacts": "contacts",
+            "gallery": "media",
+            "mail": "mail",
+            "sms": "sms",
+        }.get(app_id, app_id)
+        provider = copy.deepcopy(providers.get(provider_id, {}))
+
+        view: dict[str, Any] = {}
+        if isinstance(app_state, dict):
+            view.update(app_state)
+        if isinstance(provider, dict):
+            for key, value in provider.items():
+                view.setdefault(key, value)
+        view["app_id"] = app_id
+        view["app"] = app_state
+        view["provider"] = provider
+        view["apps"] = {app_id: app_state}
+        view["os"] = os_state
+        return view
+
+    async def task_context(
+        self,
+        app_ids: list[str] | tuple[str, ...],
+        *,
+        max_chars: int = 40_000,
+    ) -> str:
+        """Serialize compact task-prepared state for one-shot code planning."""
+        requested = list(dict.fromkeys(str(item) for item in app_ids if item))
+        snapshot = await self.env.get_state(
+            required_apps=requested or None
+        )
+        os_state = snapshot.get("os", {})
+        all_providers = os_state.get("providers", {})
+        provider_dependencies = {
+            "contacts": ("contacts",),
+            "gallery": ("media",),
+            "mail": ("mail", "contacts"),
+            "sms": ("sms", "contacts"),
+        }
+        provider_order: list[str] = []
+        for app_id in requested:
+            provider_order.extend(
+                provider_dependencies.get(app_id, (app_id,))
+            )
+        provider_order = list(dict.fromkeys(provider_order))
+        context = {
+            "schema": (
+                "apps.<id> is app state; providers contains Mail/SMS/Contacts/"
+                "Media data; os contains device/settings/filesystem state"
+            ),
+            "requested_apps": requested,
+            "apps": {
+                app_id: snapshot.get("apps", {}).get(app_id, {})
+                for app_id in requested
+            },
+            "providers": {
+                provider_id: all_providers[provider_id]
+                for provider_id in provider_order
+                if provider_id in all_providers
+            },
+            "os": {
+                key: os_state.get(key)
+                for key in (
+                    "build",
+                    "clipboard",
+                    "fileSystem",
+                    "hardware",
+                    "permissions",
+                    "preferences",
+                    "settings",
+                    "telephony",
+                )
+                if key in os_state
+            },
+        }
+        limits = (
+            (60, 2_000, 8),
+            (24, 1_000, 7),
+            (10, 500, 6),
+        )
+        max_chars = max(4_000, int(max_chars))
+        rendered = ""
+        for max_items, max_string, max_depth in limits:
+            compact = _compact_prompt_value(
+                context,
+                max_items=max_items,
+                max_string=max_string,
+                max_depth=max_depth,
+            )
+            rendered = json.dumps(compact, ensure_ascii=False, indent=2)
+            if len(rendered) <= max_chars:
+                return rendered
+        return (
+            rendered[:max_chars]
+            + f"\n... <prompt context truncated at {max_chars} chars>"
+        )
 
     async def functions(self, app_id: str) -> list[str]:
         await self._open(app_id)
@@ -247,20 +468,43 @@ class Runtime:
     ) -> CallResult:
         await self._open(app_id)
         before = await self._state(app_id)
-        value = await self.env.page.evaluate(
-            """async ({modulePath, functionName, args}) => {
-                const module = await import(modulePath);
-                const fn = module[functionName];
-                if (typeof fn !== 'function') {
-                    throw new Error('module function not found: ' + modulePath + '#' + functionName);
-                }
-                const result = await fn(...args);
-                if (result === undefined) return null;
-                try { return structuredClone(result); }
-                catch { return JSON.parse(JSON.stringify(result)); }
-            }""",
-            {"modulePath": module_path, "functionName": function, "args": list(args)},
-        )
+        value = None
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                value = await self.env.page.evaluate(
+                    """async ({modulePath, functionName, args}) => {
+                        const module = await import(modulePath);
+                        const fn = module[functionName];
+                        if (typeof fn !== 'function') {
+                            throw new Error('module function not found: ' + modulePath + '#' + functionName);
+                        }
+                        const result = await fn(...args);
+                        if (result === undefined) return null;
+                        try { return structuredClone(result); }
+                        catch { return JSON.parse(JSON.stringify(result)); }
+                    }""",
+                    {
+                        "modulePath": module_path,
+                        "functionName": function,
+                        "args": list(args),
+                    },
+                )
+                last_error = None
+                break
+            except Exception as exc:
+                last_error = exc
+                message = str(exc)
+                transient_import = (
+                    "Failed to fetch dynamically imported module" in message
+                    or "Importing a module script failed" in message
+                    or "ERR_CONNECTION" in message
+                )
+                if not transient_import or attempt >= 2:
+                    raise
+                await asyncio.sleep(0.4 * (attempt + 1))
+        if last_error is not None:
+            raise last_error
         if settle_seconds > 0:
             await asyncio.sleep(settle_seconds)
         after = await self._state(app_id)
@@ -371,7 +615,7 @@ class App:
 
     async def state(self) -> dict[str, Any]:
         await self.runtime._open(self.app_id)
-        return await self.runtime._state(self.app_id)
+        return await self.runtime.app_state_view(self.app_id)
 
     async def open(self) -> dict[str, Any]:
         """Open the app without visual reasoning and return its active route."""
@@ -1157,6 +1401,17 @@ class MobileJail:
     def __init__(self, env: Any):
         self.runtime = Runtime(env)
         self._apps = {app_id: cls(self.runtime) for app_id, cls in APP_CLASSES.items()}
+
+    async def ready(self, *, repair: bool = False) -> dict[str, Any]:
+        return await self.runtime.ready(repair=repair)
+
+    async def task_context(
+        self,
+        app_ids: list[str] | tuple[str, ...],
+        *,
+        max_chars: int = 40_000,
+    ) -> str:
+        return await self.runtime.task_context(app_ids, max_chars=max_chars)
 
     def app(self, app_id: str) -> App:
         try:

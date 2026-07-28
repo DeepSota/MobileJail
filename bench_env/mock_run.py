@@ -12,6 +12,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from .mock_tasks import (
     TaskDescriptor,
@@ -60,22 +61,116 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-tokens", type=int, default=4096)
     parser.add_argument("--infer-timeout", type=float, default=300.0)
     parser.add_argument("--code-timeout", type=float, default=30.0)
-    parser.add_argument("--episode-timeout", type=float, default=180.0)
+    parser.add_argument(
+        "--episode-timeout",
+        type=float,
+        default=360.0,
+        help=(
+            "Wall-clock limit for setup, one model plan, Skill execution, and "
+            "state judging. Keep this at least as large as --infer-timeout."
+        ),
+    )
+    parser.add_argument(
+        "--plan-attempts",
+        type=int,
+        default=3,
+        help="Model JSON/code validation attempts before recording an error.",
+    )
+    parser.add_argument(
+        "--runtime-retries",
+        type=int,
+        default=2,
+        help="Fresh-page retries for transient Vite/Playwright backend errors.",
+    )
+    parser.add_argument(
+        "--execution-repairs",
+        type=int,
+        default=1,
+        help=(
+            "Fresh task-lifecycle retries after a model program raises a "
+            "public Skill/Python error. The model receives only its code and "
+            "the exception, never judge feedback."
+        ),
+    )
+    parser.add_argument(
+        "--review-attempts",
+        type=int,
+        default=1,
+        help=(
+            "Prompt/state-only completion reviews before executing code. A "
+            "review can request a revised program but never receives judge "
+            "output. Set 0 to disable."
+        ),
+    )
+    parser.add_argument(
+        "--state-context-chars",
+        type=int,
+        default=40_000,
+        help="Maximum task-prepared live-state characters shown to CodeAgent.",
+    )
 
-    parser.add_argument("--env-url", required=False)
-    parser.add_argument("--headless", action="store_true", default=False)
+    parser.add_argument(
+        "--env-url",
+        default=os.environ.get(
+            "MOBILEJAIL_ENV_URL", "http://127.0.0.1:4180"
+        ),
+        help=(
+            "Simulator URL. Defaults to MOBILEJAIL_ENV_URL or the local Vite "
+            "development runtime at http://127.0.0.1:4180."
+        ),
+    )
+    parser.add_argument(
+        "--headless",
+        dest="headless",
+        action="store_true",
+        default=True,
+        help="Run Chromium headlessly (the stable default).",
+    )
+    parser.add_argument(
+        "--headed",
+        dest="headless",
+        action="store_false",
+        help="Show Chromium windows for interactive debugging.",
+    )
     parser.add_argument("--proxy")
     parser.add_argument("--parallel", type=int, default=1)
     parser.add_argument("--processes", type=int, default=1)
-    parser.add_argument("--browsers", type=int, default=0)
+    parser.add_argument("--browsers", type=int, default=1)
     parser.add_argument(
         "--isolation",
         choices=["pages", "contexts", "browsers"],
         default="pages",
     )
+    parser.add_argument(
+        "--fresh-context-per-task",
+        dest="fresh_context_per_task",
+        action="store_true",
+        default=True,
+        help=(
+            "Rebuild the browser context between tasks. This is the stable "
+            "default for Vite's lazy app modules and prevents task-local "
+            "state or failed imports from carrying into the next task."
+        ),
+    )
+    parser.add_argument(
+        "--reuse-context",
+        dest="fresh_context_per_task",
+        action="store_false",
+        help="Reuse a worker context between tasks after it has been validated.",
+    )
     parser.add_argument("--sample-seed", type=int, default=0)
     parser.add_argument("--runs-dir", default="runs/mock_run")
     parser.add_argument("--quiet", action="store_true")
+    parser.add_argument(
+        "--allow-failures",
+        dest="require_success",
+        action="store_false",
+        help=(
+            "Return zero after writing results even when a task failed or "
+            "raised an execution error. Intended only for diagnosis."
+        ),
+    )
+    parser.set_defaults(require_success=True)
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -114,6 +209,7 @@ def _config_from_args(args: argparse.Namespace) -> dict[str, Any]:
         "parallel": max(1, args.parallel),
         "browsers": max(0, args.browsers),
         "isolation": args.isolation,
+        "fresh_context_per_task": bool(args.fresh_context_per_task),
         "model_name": args.model_name,
         "model_base_url": args.model_base_url,
         "model_api_key": args.model_api_key,
@@ -123,6 +219,11 @@ def _config_from_args(args: argparse.Namespace) -> dict[str, Any]:
         "infer_timeout": args.infer_timeout,
         "code_timeout": args.code_timeout,
         "episode_timeout": args.episode_timeout,
+        "plan_attempts": max(1, args.plan_attempts),
+        "runtime_retries": max(0, args.runtime_retries),
+        "execution_repairs": max(0, args.execution_repairs),
+        "review_attempts": max(0, args.review_attempts),
+        "state_context_chars": max(4_000, args.state_context_chars),
         "sample_seed": args.sample_seed,
         "quiet": args.quiet,
     }
@@ -222,6 +323,24 @@ def _resolve_descriptors(args: argparse.Namespace) -> list[TaskDescriptor]:
     return selected
 
 
+def _validate_env_url(value: str | None) -> str:
+    """Reject ambiguous simulator URLs before browsers are created.
+
+    The semantic Skill needs the Vite development runtime because it exposes
+    ``window.__BENCH_STORES__``.  A bare local Vite server is HTTP, not HTTPS;
+    accepting a malformed URL here used to turn that setup mistake into many
+    unrelated task-level ``__BENCH_STORES__`` errors.
+    """
+    url = str(value or "").strip().rstrip("/")
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError(
+            "--env-url must be an absolute http(s) URL, for example "
+            "http://127.0.0.1:4180"
+        )
+    return url
+
+
 def main(argv: list[str] | None = None) -> int:
     args = create_parser().parse_args(argv)
     try:
@@ -247,8 +366,10 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
-    if not args.env_url:
-        print("[ERROR] --env-url is required", file=sys.stderr)
+    try:
+        args.env_url = _validate_env_url(args.env_url)
+    except ValueError as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
         return 2
     if not args.model_base_url:
         print(
@@ -296,12 +417,26 @@ def main(argv: list[str] | None = None) -> int:
         "processes": args.processes,
         "browsers": args.browsers,
         "isolation": args.isolation,
+        "fresh_context_per_task": args.fresh_context_per_task,
         "headless": args.headless,
+        "plan_attempts": args.plan_attempts,
+        "runtime_retries": args.runtime_retries,
+        "execution_repairs": args.execution_repairs,
+        "review_attempts": args.review_attempts,
+        "state_context_chars": args.state_context_chars,
+        "require_success": args.require_success,
     }
     from .mock_runner import write_results
 
     summary = write_results(run_dir, results, meta)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
+    if args.require_success and (summary["errors"] or summary["failed"]):
+        print(
+            "[ERROR] benchmark did not complete successfully; inspect "
+            f"{run_dir / 'results.jsonl'}",
+            file=sys.stderr,
+        )
+        return 3
     return 0
 
 

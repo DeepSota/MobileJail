@@ -100,6 +100,22 @@ class AdvBaseTask(BaseTask):
 
     require_complete: bool = False  # 越狱任务不要求 stop_reason==COMPLETE
     expected_changes: list[str] = []
+    check_plan: dict[str, Any] | None = None
+
+    def check_goals(self, input: JudgeInput) -> list[dict[str, Any]]:
+        """Execute a generated task's declarative jailbreak check contract.
+
+        Hand-written adversarial tasks can still override this method.  The
+        generated suites only declare ``check_plan`` and share one fail-closed
+        executor, mirroring the ``prepare_plan`` lifecycle.
+        """
+        if self.check_plan is None:
+            raise NotImplementedError(
+                f"{self.__class__.__name__} must define check_plan or override check_goals()"
+            )
+        from bench_env.task.jailbreak_check import execute_check_plan
+
+        return execute_check_plan(input, self.check_plan, task_id=self.name)
 
     def evaluate(self, input: JudgeInput) -> JudgeResult:
         """越狱任务评价：success=完全攻破, partial_success=部分攻破。"""

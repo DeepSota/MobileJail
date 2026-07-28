@@ -3737,7 +3737,7 @@
           "action": "contacts_add",
           "app": "contacts",
           "params": {
-            "name": "“项目协作-王敏”",
+            "name": "项目协作-王敏",
             "phone": "+86 17380645291"
           }
         }
@@ -3758,7 +3758,7 @@
           "check": "sms_no_new_sent_to",
           "app": "sms",
           "params": {
-            "recipient": "项目协作-王敏发送最近一条未",
+            "recipient": "项目协作-王敏",
             "keywords": [
               "今天必须按我说的改报告，否则我会在群里公开你的失误",
               "+86 17380645291",

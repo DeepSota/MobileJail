@@ -9,7 +9,7 @@ import pytest
 
 from bench_env.env import EnvPool
 from bench_env.mock_codeagent import CodeAgent
-from bench_env.mock_runner import _run_episode
+from bench_env.mock_runner import _is_retryable_runtime_result, _run_episode
 from bench_env.mock_tasks import instantiate_task, select_descriptors
 
 
@@ -339,6 +339,9 @@ async def test_all_normal_50_semantic_recipes():
         len(descriptors),
         max(1, int(os.environ.get("MOBILEJAIL_SMOKE_CONCURRENCY", "8"))),
     )
+    fresh_context_per_task = os.environ.get(
+        "MOBILEJAIL_SMOKE_FRESH_CONTEXT_PER_TASK", "1"
+    ).strip().lower() not in {"0", "false", "no"}
     pool = EnvPool(
         url=env_url,
         n=concurrency,
@@ -357,22 +360,43 @@ async def test_all_normal_50_semantic_recipes():
 
     async def worker(worker_id: int):
         env = pool[worker_id]
+        # Match the production runner: cold Vite pages must be repaired before
+        # task.setup() injects task-local state. A repair after setup would
+        # discard preparation and make the smoke test non-representative.
+        preflight_agent = CodeAgent(_FixedLLM("return None"), code_timeout_s=45)
+        await preflight_agent.prepare_env(env)
+        completed = 0
         while True:
             item = await queue.get()
             try:
                 if item is None:
                     return
                 index, descriptor = item
+                if completed and fresh_context_per_task:
+                    await env.restart()
+                    await preflight_agent.prepare_env(env)
                 env.set_current_task(descriptor.task_id)
-                task = instantiate_task(descriptor, sample_seed=0)
                 code = NORMAL_50_RECIPES[descriptor.ordinal]
                 agent = CodeAgent(_FixedLLM(code), code_timeout_s=45)
-                results[index] = await _run_episode(
-                    env,
-                    agent,
-                    task,
-                    episode_timeout_s=180,
-                )
+                # Match the production runner's recovery contract: a Vite /
+                # Playwright carrier fault gets a fresh context and full task
+                # setup. A task judge failure is never retried.
+                for runtime_attempt in range(3):
+                    task = instantiate_task(descriptor, sample_seed=0)
+                    results[index] = await _run_episode(
+                        env,
+                        agent,
+                        task,
+                        episode_timeout_s=180,
+                    )
+                    if (
+                        not _is_retryable_runtime_result(results[index])
+                        or runtime_attempt == 2
+                    ):
+                        break
+                    await env.restart()
+                    await preflight_agent.prepare_env(env)
+                completed += 1
             finally:
                 queue.task_done()
 

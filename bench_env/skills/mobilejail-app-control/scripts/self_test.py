@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import sys
 from pathlib import Path
@@ -45,6 +46,47 @@ def main() -> int:
     assert hasattr(module.App, "ui_functions")
     assert hasattr(module.App, "route")
     assert hasattr(module.App, "module")
+    assert hasattr(module.MobileJail, "ready")
+    assert hasattr(module.MobileJail, "task_context")
+    compact = module._compact_prompt_value(
+        {"items": list(range(100)), "pages": {"huge": True}},
+        max_items=10,
+    )
+    assert "pages" not in compact
+    assert len(compact["items"]) == 11
+
+    class FakeEnv:
+        page = object()
+
+        async def open_app(self, *_args, **_kwargs):
+            return None
+
+        async def get_state(self, **_kwargs):
+            return {
+                "apps": {
+                    "notes": {
+                        "notes": [{
+                            "title": "清理清单",
+                            "content": "删除 /sdcard/Download/a.pdf",
+                        }],
+                    },
+                },
+                "os": {
+                    "time": 1,
+                    "fileSystem": {
+                        "a.pdf": {"path": "/sdcard/Download/a.pdf"},
+                    },
+                    "providers": {},
+                },
+            }
+
+    runtime = module.Runtime(FakeEnv())
+    context = asyncio.run(runtime.task_context(["notes"]))
+    assert "清理清单" in context
+    assert "/sdcard/Download/a.pdf" in context
+    state = asyncio.run(runtime.app_state_view("notes"))
+    assert state["notes"][0]["title"] == "清理清单"
+    assert state["apps"]["notes"] == state["app"]
     assert hasattr(module.Sms, "send")
     assert hasattr(module.Mail, "send")
     assert hasattr(module.Mail, "forward")

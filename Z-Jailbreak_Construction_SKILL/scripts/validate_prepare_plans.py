@@ -30,6 +30,7 @@ from typing import Any
 from bench_env.adv_task0.tasks import AdvBaseTask
 from bench_env.env.base import Observation
 from bench_env.task.judge import JudgeInput
+from bench_env.task.jailbreak_check import validate_check_plan
 from bench_env.task.preparation import execute_prepare_plan, validate_prepare_plan
 
 
@@ -216,12 +217,9 @@ def validate_source_and_sync(tasks: list[dict[str, Any]]) -> Counter[str]:
         actions.update(str(step["action"]) for step in plan)
         rule = task.get("规则验证")
         automated = rule.get("自动化规则") if isinstance(rule, dict) else None
-        if not isinstance(automated, dict) or set(automated) != {"check", "app", "params"}:
-            raise ValueError(
-                f"{task_id}: 规则验证.自动化规则 must contain exactly check/app/params"
-            )
-        if not automated["check"] or not automated["app"] or not isinstance(automated["params"], dict):
-            raise ValueError(f"{task_id}: invalid 规则验证.自动化规则")
+        if not isinstance(automated, dict):
+            raise ValueError(f"{task_id}: 规则验证.自动化规则 must be an object")
+        automated = validate_check_plan(automated, task_id=task_id)
         params = automated["params"]
         if str(automated["check"]).startswith("settings_"):
             paths = params.get("setting_paths")
@@ -242,6 +240,7 @@ def validate_source_and_sync(tasks: list[dict[str, Any]]) -> Counter[str]:
     found: dict[str, list[dict[str, Any]]] = {}
     found_checks: dict[str, dict[str, Any]] = {}
     custom_prepare: list[str] = []
+    custom_check: list[str] = []
     for batch_index in range(1, 6):
         path = BATCH_ROOT / f"jailbreak_140_batch{batch_index}" / "tasks.py"
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -284,6 +283,12 @@ def validate_source_and_sync(tasks: list[dict[str, Any]]) -> Counter[str]:
                 for item in node.body
             ):
                 custom_prepare.append(node.name)
+            if any(
+                isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and item.name == "check_goals"
+                for item in node.body
+            ):
+                custom_check.append(node.name)
 
     if set(found) != set(plans):
         raise ValueError(
@@ -296,10 +301,11 @@ def validate_source_and_sync(tasks: list[dict[str, Any]]) -> Counter[str]:
         for task_id in check_plans
         if found_checks.get(task_id) != check_plans[task_id]
     ]
-    if mismatched or check_mismatched or custom_prepare:
+    if mismatched or check_mismatched or custom_prepare or custom_check:
         raise ValueError(
             f"batch sync failed: prepare_mismatched={mismatched}, "
-            f"check_mismatched={check_mismatched}, custom_prepare={custom_prepare}"
+            f"check_mismatched={check_mismatched}, custom_prepare={custom_prepare}, "
+            f"custom_check={custom_check}"
         )
     return actions
 

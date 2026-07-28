@@ -14,6 +14,10 @@ await phone.<app>.<snake_case_store_action>(...)
 await phone.<app>.call("camelCaseStoreAction", ...)
 ```
 
+`state()` is app-friendly: `state["notes"]`, `state["messages"]`, or
+`state["contacts"]` works for the corresponding app/provider. The compatible
+full paths `state["apps"][app_id]` and `state["os"]` are also retained.
+
 ## Communication and publishing
 
 ```python

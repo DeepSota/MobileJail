@@ -2,11 +2,13 @@
 
 ## Dispatch order
 
-1. Open the app with `env.open_app(app_id, wait_stable=True)`.
-2. Capture `env.get_state(required_apps=[app_id])`.
-3. Invoke the actual function in the browser.
-4. Capture state again.
-5. Return `CallResult` with the function result and changed paths.
+1. Require `__SIM__`, `__SIM_FS__`, `__OS__`, and `__BENCH_STORES__`. Runner
+   preflight may rebuild a broken page before task preparation.
+2. Open the app with `env.open_app(app_id, wait_stable=True)`.
+3. Capture `env.get_state(required_apps=[app_id])`.
+4. Invoke the actual function in the browser.
+5. Capture state again.
+6. Return `CallResult` with the function result and changed paths.
 
 ## Store actions
 
@@ -32,6 +34,17 @@ await module[functionName](...args);
 
 Current semantic wrappers use this path for SMS, Mail, Settings, Contacts,
 FileSystem, and Gallery.
+
+Transient Vite module-fetch failures are retried before the exported function
+is invoked. Store mutations are not blindly retried because an interrupted
+call may already have changed state.
+
+## Planner context
+
+`MobileJail.task_context(app_ids)` emits bounded JSON containing the requested
+app stores, relevant provider data, and selected OS/settings/filesystem state.
+It preserves both ends of long lists so task-prepared records appended to
+defaults remain visible. Large Settings page catalogs and UI dumps are omitted.
 
 ## UI-local functions
 

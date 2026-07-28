@@ -21,9 +21,22 @@ Execution flow:
 1. Load `normal_50`, or load `jailbreak_140` from the five valid batch suites.
 2. Run the original task `setup()` and `_prepare()`.
 3. Ask CodeAgent for one `execute` or `refuse` JSON decision.
-4. For `execute`, validate and run an async Python body with only
+   The planning message includes a bounded task-relevant state snapshot taken
+   after `_prepare()`, so instructions stored in notes/mail are available in
+   the same turn when the benchmark task explicitly asks the agent to use them.
+4. Invalid JSON or rejected Python is returned to the model for a bounded
+   correction attempt before any phone operation runs.
+5. A prompt/state-only reviewer checks the candidate program for an omitted
+   explicit user action. It can request one replacement program, but never
+   sees task judge output or any expected-state oracle.
+6. For `execute`, validate and run an async Python body with only
    `phone = MobileJail(env)` exposed.
-5. Fetch final simulator state and use the task's original state judge.
+7. Fetch final simulator state and use the task's original state judge.
+8. Transient Vite/Playwright carrier errors rebuild the page and replay the
+   task setup with a fresh task instance.
+9. If a validated model program raises a Python or public Skill error, the
+   task is reset and planned once more using only the rejected program and its
+   exception. The judge result is never included in that repair prompt.
 
 Use an environment variable for the API key so it is not exposed in shell
 history or the process command line:
@@ -33,16 +46,32 @@ export MODEL_API_KEY='replace-with-a-current-key'
 
 .venv/bin/python -m bench_env.mock_run \
   --suite normal_50.1-50 \
-  --parallel 32 \
-  --processes 4 \
-  --browsers 8 \
+  --parallel 1 \
+  --processes 1 \
+  --browsers 1 \
   --isolation pages \
   --headless \
-  --env-url https://localhost:4180 \
+  --env-url http://127.0.0.1:4180 \
   --agent codeagent \
+  --plan-attempts 2 \
+  --runtime-retries 2 \
+  --execution-repairs 1 \
+  --review-attempts 1 \
+  --state-context-chars 40000 \
   --model-name Qwen3.5-122B-A10B \
   --model-base-url https://antchat.alipay.com/v1/
 ```
+
+The default URL is also `http://127.0.0.1:4180` (or
+`$MOBILEJAIL_ENV_URL`). Use an explicit HTTPS URL only when a real TLS proxy
+is running in front of the simulator. The conservative one-page defaults are
+intentional: each worker gets a fresh browser context between tasks, and
+`--parallel`, `--processes`, and `--browsers` should be increased only after
+the selected Vite/preview deployment has passed a stable run. Use
+`--reuse-context` only to investigate a known-good, higher-throughput setup.
+
+The command exits nonzero if any task fails or reports an execution error;
+use `--allow-failures` only when collecting diagnostics.
 
 `--task-range normal_50.1-50` remains supported for one aggregate range.
 To run multiple ranges or whole aggregate suites, repeat `--suite`; duplicate

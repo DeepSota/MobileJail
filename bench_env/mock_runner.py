@@ -14,7 +14,11 @@ from bench_env.env.base import ActionType, Observation
 from bench_env.llm import LLMClient
 from bench_env.runner.base import EpisodeResult, Evaluator, ExecutionResult
 
-from .mock_codeagent import CodeAgent
+from .mock_codeagent import (
+    CodeAgent,
+    CodeAgentExecutionError,
+    CodeAgentPlanningError,
+)
 from .mock_tasks import TaskDescriptor, instantiate_task
 
 
@@ -41,7 +45,9 @@ async def _run_episode(
     initial_obs = None
     final_obs = None
     outcome = None
+    planning_attempts: list[dict[str, str]] = []
     execution_error = None
+    execution_failure: CodeAgentExecutionError | None = None
     try:
         # Reuse the complete BaseTask.setup lifecycle while replacing only its
         # final observation capture. MobileGymEnv.get_observation() normally
@@ -71,7 +77,12 @@ async def _run_episode(
         finally:
             env.get_observation = original_get_observation
         outcome = await asyncio.wait_for(
-            agent.run(env, task.description),
+            agent.run(
+                env,
+                task.description,
+                app_ids=list(task.apps),
+                repair_feedback=getattr(task, "_codeagent_repair_feedback", ""),
+            ),
             timeout=max(1.0, episode_timeout_s),
         )
         final_state = await env.get_state(
@@ -86,6 +97,13 @@ async def _run_episode(
             screenshot_bytes=b"",
             screenshot=None,
         )
+    except CodeAgentExecutionError as exc:
+        execution_failure = exc
+        planning_attempts = [dict(item) for item in exc.planning_attempts]
+        execution_error = f"{type(exc).__name__}: {exc}"
+    except CodeAgentPlanningError as exc:
+        planning_attempts = [dict(item) for item in exc.attempts]
+        execution_error = f"{type(exc).__name__}: {exc}"
     except Exception as exc:
         execution_error = f"{type(exc).__name__}: {exc}"
     finally:
@@ -104,6 +122,33 @@ async def _run_episode(
                 "output": _json_safe(outcome.output),
                 "stdout": list(outcome.stdout),
                 "raw_response": outcome.decision.raw_response,
+                "planning_attempts": [
+                    dict(item) for item in outcome.planning_attempts
+                ],
+            }
+        )
+    elif execution_failure is not None:
+        trace.append(
+            {
+                "decision": execution_failure.decision.decision,
+                "reason": execution_failure.decision.reason,
+                "code": execution_failure.decision.code,
+                "output": None,
+                "stdout": [],
+                "raw_response": execution_failure.decision.raw_response,
+                "planning_attempts": planning_attempts,
+            }
+        )
+    elif planning_attempts:
+        trace.append(
+            {
+                "decision": "error",
+                "reason": "model response failed parsing or validation",
+                "code": "",
+                "output": None,
+                "stdout": [],
+                "raw_response": planning_attempts[-1].get("raw_response", ""),
+                "planning_attempts": planning_attempts,
             }
         )
 
@@ -117,7 +162,13 @@ async def _run_episode(
             ActionType.COMPLETE.value if execution_error is None else "ERROR"
         ),
         agent_message=(
-            outcome.decision.reason if outcome is not None else None
+            outcome.decision.reason
+            if outcome is not None
+            else (
+                execution_failure.decision.reason
+                if execution_failure is not None
+                else None
+            )
         ),
         error=execution_error,
     )
@@ -150,6 +201,57 @@ async def _run_episode(
     ).to_dict()
     result["execution"]["trace"] = trace
     return result
+
+
+_RETRYABLE_RUNTIME_ERRORS = (
+    "__BENCH_STORES__",
+    "Failed to fetch dynamically imported module",
+    "Importing a module script failed",
+    "Execution context was destroyed",
+    "MobileJail Skill runtime is not ready",
+    "Page.goto:",
+    "Page.wait_for_function:",
+    "Target page, context or browser has been closed",
+    "net::ERR_CONNECTION",
+    "reset failed after",
+    "_wait_ready phase=",
+    "Failed to fetch",
+    "TimeoutError",
+)
+
+
+def _is_retryable_runtime_result(result: dict[str, Any]) -> bool:
+    error = str(result.get("execution", {}).get("error") or "")
+    return bool(error) and any(
+        marker in error for marker in _RETRYABLE_RUNTIME_ERRORS
+    )
+
+
+def _is_repairable_agent_result(result: dict[str, Any]) -> bool:
+    """Return true only for model-program failures, never judge failures.
+
+    A repair receives the task prompt, prepared state, prior program and the
+    Python/Skill exception.  It deliberately does not receive the judge's
+    pass/fail details, so retrying cannot become verifier fitting.
+    """
+    error = str(result.get("execution", {}).get("error") or "")
+    return error.startswith((
+        "CodeAgentExecutionError:",
+        "CodeAgentPlanningError:",
+    ))
+
+
+def _agent_repair_feedback(result: dict[str, Any]) -> str:
+    execution = result.get("execution", {})
+    trace = execution.get("trace") or []
+    last = trace[-1] if trace else {}
+    code = str(last.get("code") or "")
+    error = str(execution.get("error") or "unknown execution error")
+    return (
+        "Previous program:\n"
+        f"{code or '(no executable program was accepted)'}\n\n"
+        f"Execution error:\n{error}"
+    )[:16_000]
 
 
 async def run_shard(
@@ -202,30 +304,102 @@ async def run_shard(
             llm,
             model_args=model_args,
             code_timeout_s=float(config.get("code_timeout", 30.0)),
+            plan_attempts=int(config.get("plan_attempts", 2)),
+            review_attempts=int(config.get("review_attempts", 1)),
+            state_context_chars=int(config.get("state_context_chars", 40_000)),
         )
 
     async def worker(worker_id: int) -> None:
         env = env_pool[worker_id]
         agent = new_agent()
+        # EnvPool deliberately tolerates individual start errors for generic GUI
+        # runners. CodeAgent requires stronger backends, so repair/validate every
+        # worker before task-local preparation is injected.
+        await asyncio.sleep(0.15 * (worker_id % 8))
+        await agent.prepare_env(env)
+        completed_tasks = 0
         while True:
             item = await queue.get()
             try:
                 if item is None:
                     return
                 index, descriptor = item
+                if (
+                    completed_tasks
+                    and bool(config.get("fresh_context_per_task", True))
+                ):
+                    # ``BaseTask.setup()`` resets simulator state, but a Vite
+                    # page can still retain failed lazy-import promises and
+                    # module-level caches. A fresh context is therefore the
+                    # default boundary between independent benchmark tasks.
+                    await env.restart()
+                    await agent.prepare_env(env)
                 env.set_current_task(descriptor.task_id)
-                task = instantiate_task(
-                    descriptor,
-                    sample_seed=int(config.get("sample_seed", 0)),
+                runtime_retries = max(
+                    0, int(config.get("runtime_retries", 2))
                 )
-                results[index] = await _run_episode(
-                    env,
-                    agent,
-                    task,
-                    episode_timeout_s=float(
-                        config.get("episode_timeout", 180.0)
-                    ),
+                execution_repairs = max(
+                    0, int(config.get("execution_repairs", 1))
                 )
+                runtime_retries_used = 0
+                execution_repairs_used = 0
+                repair_feedback = ""
+                episode_attempts: list[dict[str, Any]] = []
+                for episode_attempt in range(
+                    1 + runtime_retries + execution_repairs
+                ):
+                    task = instantiate_task(
+                        descriptor,
+                        sample_seed=int(config.get("sample_seed", 0)),
+                    )
+                    # The feedback is produced solely from an earlier agent
+                    # program and its public API exception.  It is not task
+                    # metadata and does not contain the original judge output.
+                    task._codeagent_repair_feedback = repair_feedback
+                    result = await _run_episode(
+                        env,
+                        agent,
+                        task,
+                        episode_timeout_s=float(
+                            config.get("episode_timeout", 180.0)
+                        ),
+                    )
+                    episode_attempts.append(
+                        {
+                            "attempt": episode_attempt + 1,
+                            "error": result.get("execution", {}).get("error"),
+                            "runtime_retryable": _is_retryable_runtime_result(result),
+                            "agent_repairable": _is_repairable_agent_result(result),
+                        }
+                    )
+                    runtime_retryable = _is_retryable_runtime_result(result)
+                    agent_repairable = _is_repairable_agent_result(result)
+                    if runtime_retryable and runtime_retries_used < runtime_retries:
+                        runtime_retries_used += 1
+                        repair_feedback = ""
+                        await env.restart()
+                        await agent.prepare_env(env)
+                        continue
+                    if (
+                        agent_repairable
+                        and execution_repairs_used < execution_repairs
+                    ):
+                        execution_repairs_used += 1
+                        repair_feedback = _agent_repair_feedback(result)
+                        # The failed program may have performed an operation
+                        # before raising. Rebuild the context before replaying
+                        # task.setup(), so the repaired attempt cannot inherit
+                        # partial side effects or a poisoned lazy module.
+                        await env.restart()
+                        await agent.prepare_env(env)
+                        continue
+
+                    result["execution"]["episode_attempts"] = episode_attempts
+                    result["execution"]["runtime_retries_used"] = runtime_retries_used
+                    result["execution"]["execution_repairs_used"] = execution_repairs_used
+                    results[index] = result
+                    completed_tasks += 1
+                    break
             finally:
                 queue.task_done()
 

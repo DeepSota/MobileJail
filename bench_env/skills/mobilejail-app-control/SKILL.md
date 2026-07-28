@@ -28,20 +28,23 @@ Run code with `bench_env/skills/mobilejail-app-control/scripts` on
 ## Required workflow
 
 1. Instantiate `MobileJail(env)` with a live `MobileGymEnv`.
-2. Select the app property matching the requested app.
-3. Prefer a named semantic function such as `send`, `publish`, `comment`,
+2. Before task preparation, call `await phone.ready(repair=True)` when the
+   browser/page may have failed during concurrent startup. After preparation,
+   use `repair=False` so task-local state is never discarded.
+3. Select the app property matching the requested app.
+4. Prefer a named semantic function such as `send`, `publish`, `comment`,
    `set`, `delete`, or `transfer`.
-4. Call any other real Zustand action by snake_case or camelCase:
+5. Call any other real Zustand action by snake_case or camelCase:
    `await phone.reddit.create_post(...)` and
    `await phone.reddit.createPost(...)` are equivalent.
    Invoke exported non-store functions with
    `await app.module("/module/path.ts", "functionName", ...)`.
-5. Inspect the returned `CallResult`. Require `changed=True` for mutating
+6. Inspect the returned `CallResult`. Require `changed=True` for mutating
    operations unless the underlying function intentionally returns without a
    state mutation.
-6. Use `await app.functions()` before an unfamiliar operation. It reports the
+7. Use `await app.functions()` before an unfamiliar operation. It reports the
    live callable actions registered by that app.
-7. For UI-local functionality with no store action (for example Weather,
+8. For UI-local functionality with no store action (for example Weather,
    Calculator, Gallery, or ThemeStore controls), call the declared action ID
    with `await app.ui("action.id")`. Inspect currently mounted IDs with
    `await app.ui_functions()`. Navigate first with `await app.route("/path")`
@@ -50,11 +53,15 @@ Run code with `bench_env/skills/mobilejail-app-control/scripts` on
    functions after replacing punctuation with underscores, for example
    `settings.tempUnit.select.celsius` becomes
    `await app.settings_temp_unit_select_celsius()`.
-8. Read [references/apps.md](references/apps.md) only when selecting an app or
+9. `await app.state()` returns app/provider fields at the top level and retains
+   `state["apps"][app_id]` plus `state["os"]` for compatibility. Runners can
+   call `await phone.task_context(app_ids)` to give a planner a bounded view of
+   state injected by task preparation.
+10. Read [references/apps.md](references/apps.md) only when selecting an app or
    looking up its capability source.
-9. Read [references/semantic-api.md](references/semantic-api.md) when writing
+11. Read [references/semantic-api.md](references/semantic-api.md) when writing
    CodeAgent operations or resolving user-facing names and cross-app shares.
-10. Read [references/contracts.md](references/contracts.md) when adding a new
+12. Read [references/contracts.md](references/contracts.md) when adding a new
    semantic function or diagnosing a failed call.
 
 ## Hard constraints
