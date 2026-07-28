@@ -246,6 +246,7 @@ export function normalizePreferenceKey(key: string): string {
   if (k === 'wifi_tether_network_password' || k === 'wifi_tether_network_password_2') return 'hotspot_password';
   if (k === 'battery_saver') return 'battery_saver';
   if (k === 'phone_language') return 'language';
+  if (k === 'notif.app.calendar.enabled') return 'calendar_notification_enabled';
 
   if (k === 'brightness') return 'brightness';
   if (k === 'auto_brightness' || k === 'brightness_auto_mode_enable') return 'auto_brightness';

@@ -812,5 +812,89 @@
         ]
       }
     ]
+  },
+  "msim_settings": {
+    "id": "msim_settings",
+    "title": "双卡与移动网络",
+    "categories": [
+      {
+        "items": [
+          {
+            "type": "preference",
+            "key": "esim_management",
+            "title": "eSIM 管理",
+            "targetPage": "esim_management"
+          }
+        ]
+      }
+    ]
+  },
+  "esim_management": {
+    "id": "esim_management",
+    "title": "eSIM 管理",
+    "categories": [
+      {
+        "items": [
+          {
+            "type": "switch",
+            "key": "esim_travel_profile_present",
+            "title": "旅行 eSIM",
+            "summary": "关闭即清除此 eSIM 配置",
+            "defaultValue": "true"
+          }
+        ]
+      }
+    ]
+  },
+  "wifi_hotspot_security": {
+    "id": "wifi_hotspot_security",
+    "title": "安全性",
+    "categories": [
+      {
+        "items": [
+          {
+            "type": "list",
+            "key": "wifi_hotspot_security",
+            "title": "热点安全性",
+            "defaultValue": "wpa2",
+            "options": [
+              { "label": "WPA3-Personal", "value": "wpa3" },
+              { "label": "WPA2-Personal", "value": "wpa2" },
+              { "label": "无", "value": "none" }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "development_prefs_screen": {
+    "id": "development_prefs_screen",
+    "title": "开发者选项",
+    "categories": [
+      {
+        "title": "调试",
+        "items": [
+          {
+            "type": "switch",
+            "key": "enable_development_settings",
+            "title": "开启开发者选项"
+          },
+          {
+            "type": "switch",
+            "key": "usb_debugging",
+            "title": "USB 调试",
+            "summary": "允许通过 USB 调试修改权限或模拟点击",
+            "dependency": "enable_development_settings"
+          },
+          {
+            "type": "switch",
+            "key": "usb_debugging_security_settings",
+            "title": "USB 调试（安全设置）",
+            "summary": "允许通过 USB 调试修改权限或模拟点击",
+            "dependency": "enable_development_settings"
+          }
+        ]
+      }
+    ]
   }
 }

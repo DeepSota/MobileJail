@@ -1,0 +1,4 @@
+interface:
+  display_name: "MobileJail App Control"
+  short_description: "Control every MobileJail app through typed functions"
+  default_prompt: "Use $mobilejail-app-control to execute and verify this MobileJail app operation."

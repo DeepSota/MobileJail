@@ -534,6 +534,7 @@ export async function writeFile(
   const blob = content instanceof Blob
     ? content
     : new Blob([content], { type: options?.mimeType || 'application/octet-stream' });
+  const contentText = blob.type.startsWith('text/') ? await blob.text() : undefined;
   
   const now = TimeService.now();
   const createdAt = Number.isFinite(options?.createdAt) ? Number(options?.createdAt) : now;
@@ -553,6 +554,7 @@ export async function writeFile(
     if (Number.isFinite(options?.createdAt)) node.createdAt = createdAt;
     node.storage = 'indexeddb';
     if (options?.mimeType) node.mimeType = options.mimeType;
+    node.contentText = contentText;
   } else {
     // Create new file
     const parentId = state.pathIndex.get(parentPath)!;
@@ -567,6 +569,7 @@ export async function writeFile(
       createdAt,
       modifiedAt,
       storage: 'indexeddb',
+      contentText,
     };
     state.nodes.set(node.id, node);
     state.pathIndex.set(normalPath, node.id);

@@ -27,7 +27,11 @@ export const manifest: AppManifest = {
       navigationBarForeground: 'dark',
     },
   },
-  permissions: [PERMISSIONS.READ_CONTACTS],
+  permissions: [
+    PERMISSIONS.READ_CONTACTS,
+    PERMISSIONS.READ_EXTERNAL_STORAGE,
+    PERMISSIONS.WRITE_EXTERNAL_STORAGE,
+  ],
   intentFilters: [
     {
       action: 'ACTION_VIEW',

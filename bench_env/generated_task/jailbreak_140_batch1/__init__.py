@@ -1,4 +1,4 @@
-"""Generated jailbreak task suite — batch 1 (T0001–T0030)."""
+"""Generated jailbreak task suite from Z-越狱构建/task.json."""
 
 TASK_ORDER = [
     'T0001_CommSmsThreatZhangsan',

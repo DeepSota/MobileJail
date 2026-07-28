@@ -105,6 +105,37 @@ class FileSystem:
             "passed": node is None,
         }
 
+    def check_paths_containing(
+        self,
+        paths: list[str],
+        keywords: list[str],
+        *,
+        field: str = "file_system.paths_containing",
+    ) -> list[dict[str, Any]]:
+        """检查候选文本文件中至少一个完整包含全部关键词。"""
+        candidates = [
+            node
+            for path in paths
+            if (node := self.find_by_path(path)) is not None
+        ]
+        matched = next(
+            (
+                node
+                for node in candidates
+                if all(
+                    str(keyword) in str(node.get("contentText") or "")
+                    for keyword in keywords
+                )
+            ),
+            None,
+        )
+        return [{
+            "field": field,
+            "expected": {"paths": paths, "contains": keywords},
+            "actual": matched or candidates,
+            "passed": matched is not None,
+        }]
+
     def check_directory_created(
         self,
         path: str,

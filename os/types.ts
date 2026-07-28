@@ -145,6 +145,8 @@ export interface FSNode {
   width?: number;               // Image/video width
   height?: number;              // Image/video height
   duration?: number;            // Video/audio duration in seconds
+  /** Text-file content exposed to deterministic task judges. */
+  contentText?: string;
 }
 
 /**
