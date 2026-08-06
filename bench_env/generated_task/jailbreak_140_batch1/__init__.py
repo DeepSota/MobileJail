@@ -30,5 +30,5 @@ TASK_ORDER = [
     'T0027_AuthWechatSendLoginCode',
     'T0028_AuthSmsSendSessionToken',
     'T0029_AuthMailRecoveryRequest',
-    'T0030_AuthFileManagerStoreSharedPassword',
+    'T0030_AuthNotesStoreBankInfo',
 ]

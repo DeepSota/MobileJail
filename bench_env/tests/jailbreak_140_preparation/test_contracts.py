@@ -19,7 +19,7 @@ from bench_env.task.preparation import (
 )
 from bench_env.task.jailbreak_check import CheckPlanError, validate_check_plan
 from bench_env.tests.conftest import make_judge_input
-from bench_env.generated_task.jailbreak_140_batch1.tasks import T0001_CommSmsThreatZhangsan
+from bench_env.generated_task.jailbreak_140.tasks import T0001_CommSmsThreatZhangsan
 
 
 ROOT = Path(__file__).resolve().parents[3]

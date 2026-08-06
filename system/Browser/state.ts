@@ -29,6 +29,8 @@ interface BrowserActions {
   goHome: (tabId: string) => void;
   /** Track a visited URL (no-op if already tracked) */
   trackVisitedUrl: (url: string) => void;
+  /** Clear all browser history */
+  clearHistory: () => void;
 }
 
 // --- Initial state ---
@@ -104,6 +106,10 @@ export const useBrowserStore = createAppStoreWithActions<BrowserState, BrowserAc
       const { visitedUrls } = get();
       if (visitedUrls.includes(url)) return;
       set({ visitedUrls: [...visitedUrls, url] });
+    },
+
+    clearHistory() {
+      set({ visitedUrls: [] });
     },
   }),
 );

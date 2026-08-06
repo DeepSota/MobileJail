@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import * as FileSystem from '@/os/FileSystemService';
 import { IcZoomIn, IcZoomOut } from '../res/icons';
 import { useFileManagerGestures } from '../hooks/useFileManagerGestures';
 import { useAppStrings } from '@/os/useAppStrings';
@@ -9,6 +10,7 @@ import type { ViewerStateReporter } from './viewerState';
 
 interface TextDocumentViewProps {
   blob: Blob;
+  path: string;
   zoomPercent: number;
   searchQuery: string;
   showLineNumbers?: boolean;
@@ -55,6 +57,7 @@ function countMatches(text: string, query: string): number {
 
 export const TextDocumentView: React.FC<TextDocumentViewProps> = ({
   blob,
+  path,
   zoomPercent,
   searchQuery,
   showLineNumbers = false,
@@ -66,6 +69,11 @@ export const TextDocumentView: React.FC<TextDocumentViewProps> = ({
   const [decoded, setDecoded] = useState<DecodedText | null>(null);
   const [failed, setFailed] = useState(false);
   const [retryVersion, setRetryVersion] = useState(0);
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveToast, setSaveToast] = useState<'success' | 'failed' | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (failed) {
@@ -104,6 +112,44 @@ export const TextDocumentView: React.FC<TextDocumentViewProps> = ({
   const fontSize = 14 * (zoomPercent / 100);
   const lineHeight = 22 * (zoomPercent / 100);
 
+  const handleEdit = useCallback(() => {
+    if (!text) return;
+    setEditText(text);
+    setEditing(true);
+    // Focus textarea after render
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+    });
+  }, [text]);
+
+  const handleSave = useCallback(async () => {
+    if (!path || saving) return;
+    setSaving(true);
+    try {
+      await FileSystem.writeFile(path, new Blob([editText], { type: 'text/plain' }), {
+        mimeType: 'text/plain',
+      });
+      setSaveToast('success');
+      setEditing(false);
+      // Re-read the file to update the view
+      const newBlob = await FileSystem.readFile(path);
+      if (newBlob) {
+        const buffer = await newBlob.arrayBuffer();
+        setDecoded(decodeTextBytes(new Uint8Array(buffer)));
+      }
+    } catch (error) {
+      console.error('[FileManager] Text save failed:', error);
+      setSaveToast('failed');
+    }
+    setSaving(false);
+    // Auto-hide toast
+    setTimeout(() => setSaveToast(null), 2000);
+  }, [path, editText, saving]);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditing(false);
+  }, []);
+
   if (failed) {
     return (
       <div className="flex h-full flex-col items-center justify-center px-10 text-center">
@@ -132,80 +178,139 @@ export const TextDocumentView: React.FC<TextDocumentViewProps> = ({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-white">
-      {searchQuery.trim() && (
+      {searchQuery.trim() && !editing && (
         <div className="shrink-0 border-b border-black/5 bg-[#fff7d8] px-4 py-2 text-[12px] text-[#6f5a16]">
           {matchCount > 0 ? `${matchCount}${s.viewer_search_matches_suffix}` : s.viewer_search_no_results}
         </div>
       )}
-      <div
-        className="min-h-0 flex-1 overflow-auto overscroll-contain bg-[#fbfbfc]"
-        data-scroll-container="main"
-        data-scroll-direction="vertical"
-      >
-        {text.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-[14px] text-gray-400">
-            {s.text_preview_empty}
-          </div>
-        ) : (
-          <div className={`${wrap ? 'w-full' : 'min-w-max'} bg-white py-5 font-mono text-[#202124]`}>
-            {lines.map((line, index) => (
-              <div
-                key={index}
-                className="flex min-h-[1.6em] px-4"
-                style={{ fontSize, lineHeight: `${lineHeight}px` }}
-              >
-                {showLineNumbers && (
-                  <span className="mr-5 w-10 shrink-0 select-none text-right text-gray-300">
-                    {index + 1}
+
+      {/* Edit mode */}
+      {editing ? (
+        <textarea
+          ref={textareaRef}
+          value={editText}
+          onChange={e => setEditText(e.target.value)}
+          className="min-h-0 flex-1 resize-none bg-[#fbfbfc] p-5 font-mono text-[#202124] outline-none"
+          style={{ fontSize, lineHeight: `${lineHeight}px` }}
+          data-keep-keyboard="true"
+        />
+      ) : (
+        <div
+          className="min-h-0 flex-1 overflow-auto overscroll-contain bg-[#fbfbfc]"
+          data-scroll-container="main"
+          data-scroll-direction="vertical"
+        >
+          {text.length === 0 ? (
+            <div className="flex h-full items-center justify-center text-[14px] text-gray-400">
+              {s.text_preview_empty}
+            </div>
+          ) : (
+            <div className={`${wrap ? 'w-full' : 'min-w-max'} bg-white py-5 font-mono text-[#202124]`}>
+              {lines.map((line, index) => (
+                <div
+                  key={index}
+                  className="flex min-h-[1.6em] px-4"
+                  style={{ fontSize, lineHeight: `${lineHeight}px` }}
+                >
+                  {showLineNumbers && (
+                    <span className="mr-5 w-10 shrink-0 select-none text-right text-gray-300">
+                      {index + 1}
+                    </span>
+                  )}
+                  <span className={wrap ? 'min-w-0 whitespace-pre-wrap break-words' : 'whitespace-pre'}>
+                    {splitHighlightedText(line, searchQuery)}
                   </span>
-                )}
-                <span className={wrap ? 'min-w-0 whitespace-pre-wrap break-words' : 'whitespace-pre'}>
-                  {splitHighlightedText(line, searchQuery)}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Bottom toolbar */}
       <div className="flex h-[52px] shrink-0 items-center gap-2 border-t border-black/10 bg-white px-3">
         <span className="min-w-0 flex-1 truncate text-[11px] text-gray-500">
-          {s.viewer_encoding_label}{decoded?.encoding ?? 'UTF-8'}
+          {editing ? null : <>{s.viewer_encoding_label}{decoded?.encoding ?? 'UTF-8'}</>}
         </span>
-        <div className="flex shrink-0 items-center gap-1">
-          <button
-            type="button"
-            disabled={zoomPercent <= 50}
-            {...bindTap('viewer.zoom.set', { params: { zoom: zoomOut }, mode: 'replace' })}
-            className="flex h-9 w-9 items-center justify-center rounded-full active:bg-gray-100 disabled:opacity-30"
-            aria-label={s.viewer_zoom_out}
-          >
-            <IcZoomOut size={20} />
-          </button>
-          <span className="w-10 text-center text-[12px] tabular-nums text-gray-500">{zoomPercent}%</span>
-          <button
-            type="button"
-            disabled={zoomPercent >= 200}
-            {...bindTap('viewer.zoom.set', { params: { zoom: zoomIn }, mode: 'replace' })}
-            className="flex h-9 w-9 items-center justify-center rounded-full active:bg-gray-100 disabled:opacity-30"
-            aria-label={s.viewer_zoom_in}
-          >
-            <IcZoomIn size={20} />
-          </button>
-        </div>
-        <button
-          type="button"
-          {...bindTap('viewer.text.wrap.set', {
-            params: { wrap: wrap ? 'off' : 'on' },
-            mode: 'replace',
-          })}
-          className={`h-8 shrink-0 rounded-full px-3 text-[11px] font-medium active:opacity-70 ${
-            wrap ? 'bg-blue-50 text-app-primary' : 'bg-gray-100 text-gray-500'
-          }`}
-          aria-pressed={wrap}
-        >
-          {wrap ? s.viewer_wrap_on : s.viewer_wrap_off}
-        </button>
+        {editing ? (
+          <>
+            <button
+              type="button"
+              onClick={handleCancelEdit}
+              className="h-8 shrink-0 rounded-full bg-gray-100 px-4 text-[13px] font-medium text-gray-600 active:opacity-70"
+            >
+              {s.viewer_done}
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              data-action="viewer.file.save"
+              data-action-type="tap"
+              className="h-8 shrink-0 rounded-full bg-app-primary px-4 text-[13px] font-medium text-white active:opacity-80 disabled:opacity-50"
+            >
+              {saving ? s.viewer_saving : s.viewer_save}
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                disabled={zoomPercent <= 50}
+                {...bindTap('viewer.zoom.set', { params: { zoom: zoomOut }, mode: 'replace' })}
+                className="flex h-9 w-9 items-center justify-center rounded-full active:bg-gray-100 disabled:opacity-30"
+                aria-label={s.viewer_zoom_out}
+              >
+                <IcZoomOut size={20} />
+              </button>
+              <span className="w-10 text-center text-[12px] tabular-nums text-gray-500">{zoomPercent}%</span>
+              <button
+                type="button"
+                disabled={zoomPercent >= 200}
+                {...bindTap('viewer.zoom.set', { params: { zoom: zoomIn }, mode: 'replace' })}
+                className="flex h-9 w-9 items-center justify-center rounded-full active:bg-gray-100 disabled:opacity-30"
+                aria-label={s.viewer_zoom_in}
+              >
+                <IcZoomIn size={20} />
+              </button>
+            </div>
+            <button
+              type="button"
+              {...bindTap('viewer.text.wrap.set', {
+                params: { wrap: wrap ? 'off' : 'on' },
+                mode: 'replace',
+              })}
+              className={`h-8 shrink-0 rounded-full px-3 text-[11px] font-medium active:opacity-70 ${
+                wrap ? 'bg-blue-50 text-app-primary' : 'bg-gray-100 text-gray-500'
+              }`}
+              aria-pressed={wrap}
+            >
+              {wrap ? s.viewer_wrap_on : s.viewer_wrap_off}
+            </button>
+            {path && (
+              <button
+                type="button"
+                onClick={handleEdit}
+                data-action="viewer.file.edit"
+                data-action-type="tap"
+                className="h-8 shrink-0 rounded-full bg-app-primary px-4 text-[13px] font-medium text-white active:opacity-80"
+              >
+                {s.viewer_edit}
+              </button>
+            )}
+          </>
+        )}
       </div>
+
+      {/* Save toast */}
+      {saveToast && (
+        <div className="absolute bottom-16 left-1/2 z-20 -translate-x-1/2 rounded-full px-4 py-2 text-[13px] font-medium text-white shadow-lg"
+          style={{ backgroundColor: saveToast === 'success' ? '#22c55e' : '#ef4444' }}
+        >
+          {saveToast === 'success' ? s.viewer_save_success : s.viewer_save_failed}
+        </div>
+      )}
     </div>
   );
 };

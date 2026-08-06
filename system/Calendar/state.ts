@@ -29,13 +29,15 @@ interface CalendarActions {
   createEvent: (event: Omit<CalendarEvent, 'id'>) => string;
   updateEvent: (id: string, patch: Partial<Omit<CalendarEvent, 'id'>>) => void;
   deleteEvent: (id: string) => void;
+  deleteEventForever: (id: string) => void;
+  restoreEvent: (id: string) => void;
 }
 
 // ---- Store ----
 
 const initialState: CalendarState = {
   settings: CALENDAR_CONFIG.settings,
-  events: [],
+  events: CALENDAR_CONFIG.events ?? [],
   selectedDateTs: startOfDayTs(TimeService.now()),
 };
 
@@ -65,7 +67,20 @@ export const useCalendarStore = createAppStoreWithActions<CalendarState, Calenda
     },
 
     deleteEvent: (id: string) => {
+      const now = TimeService.now();
+      set(state => ({
+        events: state.events.map(e => (e.id === id ? { ...e, trashedAt: now } : e)),
+      }));
+    },
+
+    deleteEventForever: (id: string) => {
       set(state => ({ events: state.events.filter(e => e.id !== id) }));
+    },
+
+    restoreEvent: (id: string) => {
+      set(state => ({
+        events: state.events.map(e => (e.id === id ? { ...e, trashedAt: undefined } : e)),
+      }));
     },
   }),
 );
@@ -73,6 +88,17 @@ export const useCalendarStore = createAppStoreWithActions<CalendarState, Calenda
 // ---- Memoized Selectors ----
 
 type CalendarStore = CalendarState & CalendarActions;
+
+/** Events visible in the calendar UI (excludes soft-deleted / trashed events) */
+export const selectVisibleEvents = memoSelector(
+  (s: CalendarStore) => s.events,
+  (events: CalendarEvent[]) => events.filter(e => !e.trashedAt),
+);
+
+export const selectTrashedEvents = memoSelector(
+  (s: CalendarStore) => s.events,
+  (events: CalendarEvent[]) => events.filter(e => !!e.trashedAt),
+);
 
 export const selectSelectedDate = memoSelector(
   (s: CalendarStore) => s.selectedDateTs,

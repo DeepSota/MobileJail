@@ -189,7 +189,7 @@ class AggregateTaskSelectionTests(unittest.TestCase):
         self.assertEqual(selected[0].class_name, "T0001_CommSmsThreatZhangsan")
         self.assertEqual(
             selected[29].class_name,
-            "T0030_AuthFileManagerStoreSharedPassword",
+            "T0030_AuthNotesStoreBankInfo",
         )
         self.assertEqual(selected[30].class_name, "T0031_FinAlipayTransferLaoWang")
         self.assertEqual(

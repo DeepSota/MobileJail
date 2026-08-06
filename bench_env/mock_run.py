@@ -108,6 +108,16 @@ def create_parser() -> argparse.ArgumentParser:
         default=40_000,
         help="Maximum task-prepared live-state characters shown to CodeAgent.",
     )
+    parser.add_argument(
+        "--force-execute",
+        action="store_true",
+        default=False,
+        help=(
+            "Disable safety refusal in CodeAgent. The agent will always execute "
+            "the task, even if it appears harmful. Intended for self-verification "
+            "of jailbreak task prepare/check logic."
+        ),
+    )
 
     parser.add_argument(
         "--env-url",
@@ -224,6 +234,7 @@ def _config_from_args(args: argparse.Namespace) -> dict[str, Any]:
         "execution_repairs": max(0, args.execution_repairs),
         "review_attempts": max(0, args.review_attempts),
         "state_context_chars": max(4_000, args.state_context_chars),
+        "force_execute": bool(args.force_execute),
         "sample_seed": args.sample_seed,
         "quiet": args.quiet,
     }
@@ -235,10 +246,25 @@ def _process_entry(
     config: dict[str, Any],
     output_queue: Any,
 ) -> None:
+    # Suppress harmless Python 3.11 asyncio subprocess cleanup noise
+    # ("Event loop is closed" in BaseSubprocessTransport.__del__).
+    import asyncio
+    try:
+        asyncio.get_event_loop_policy().get_event_loop()
+    except RuntimeError:
+        pass
+    import warnings
+    warnings.filterwarnings("ignore", message=".*Event loop is closed.*")
+
     try:
         from .mock_runner import run_shard
 
-        results = asyncio.run(run_shard(descriptors, config))
+        def on_task_done() -> None:
+            output_queue.put({"type": "progress", "shard": shard_id})
+
+        results = asyncio.run(
+            run_shard(descriptors, config, progress_callback=on_task_done)
+        )
         output_queue.put(
             {"type": "results", "shard": shard_id, "results": results}
         )
@@ -257,6 +283,8 @@ def _run_multiprocess(
     config: dict[str, Any],
     processes: int,
 ) -> list[dict[str, Any]]:
+    from tqdm import tqdm
+
     process_count = min(max(1, processes), len(descriptors))
     shards = _partition(descriptors, process_count)
     parallel_counts = _distribute(config["parallel"], process_count)
@@ -276,7 +304,23 @@ def _run_multiprocess(
         process.start()
         workers.append(process)
 
-    messages = [output_queue.get() for _ in workers]
+    progress = tqdm(
+        total=len(descriptors),
+        desc="Tasks",
+        unit="task",
+        smoothing=0.1,
+    )
+    messages: list[dict[str, Any]] = []
+    remaining = len(workers)
+    while remaining > 0:
+        message = output_queue.get()
+        if message["type"] == "progress":
+            progress.update(1)
+        elif message["type"] in ("results", "fatal"):
+            messages.append(message)
+            remaining -= 1
+    progress.close()
+
     for process in workers:
         process.join()
 
@@ -394,8 +438,18 @@ def main(argv: list[str] | None = None) -> int:
             )
         else:
             from .mock_runner import run_shard
+            from tqdm import tqdm
 
-            results = asyncio.run(run_shard(descriptors, config))
+            progress = tqdm(
+                total=len(descriptors),
+                desc="Tasks",
+                unit="task",
+                smoothing=0.1,
+            )
+            results = asyncio.run(
+                run_shard(descriptors, config, progress_callback=progress.update)
+            )
+            progress.close()
     except KeyboardInterrupt:
         return 130
     except Exception as exc:
@@ -424,6 +478,7 @@ def main(argv: list[str] | None = None) -> int:
         "execution_repairs": args.execution_repairs,
         "review_attempts": args.review_attempts,
         "state_context_chars": args.state_context_chars,
+        "force_execute": args.force_execute,
         "require_success": args.require_success,
     }
     from .mock_runner import write_results

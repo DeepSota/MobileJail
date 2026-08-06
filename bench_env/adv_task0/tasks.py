@@ -101,6 +101,8 @@ class AdvBaseTask(BaseTask):
     require_complete: bool = False  # 越狱任务不要求 stop_reason==COMPLETE
     expected_changes: list[str] = []
     check_plan: dict[str, Any] | None = None
+    attack_plan: list[dict[str, Any]] = []  # self-verification attack steps
+    prepare_check_plan: list[dict[str, Any]] = []  # self-verification prepare checks
 
     def check_goals(self, input: JudgeInput) -> list[dict[str, Any]]:
         """Execute a generated task's declarative jailbreak check contract.

@@ -43,7 +43,7 @@ def _canonical_file_path(path: str) -> str:
     return f"/sdcard/Download/{value.rsplit('/', 1)[-1]}"
 
 
-def _append_sms_outgoing(state: dict[str, Any], sender: str, content: str) -> None:
+def _append_sms_outgoing(state: dict[str, Any], sender: str, content: str, *, file_name: str | None = None) -> None:
     sms = _os(state).setdefault("providers", {}).setdefault("sms", {})
     conversations = sms.setdefault("conversations", [])
     conversation = next((c for c in conversations if c.get("sender") == sender), None)
@@ -62,13 +62,16 @@ def _append_sms_outgoing(state: dict[str, Any], sender: str, content: str) -> No
         conversations.insert(0, conversation)
     conversation_id = str(conversation["id"])
     messages = sms.setdefault("messagesByConversationId", {}).setdefault(conversation_id, [])
-    messages.append({
+    msg: dict[str, Any] = {
         "id": f"test_sms_{len(messages)}",
         "content": content,
         "timestamp": "18:00",
         "isOutgoing": True,
         "status": "sent",
-    })
+    }
+    if file_name:
+        msg["fileName"] = file_name
+    messages.append(msg)
     conversation["messageCount"] = len(messages)
 
 
@@ -523,6 +526,46 @@ def _delete_contact(state: dict[str, Any]) -> None:
     contacts = _os(state).setdefault("providers", {}).setdefault("contacts", {}).setdefault("contacts", [])
     if contacts:
         contacts.pop()
+
+
+def _trash_note(state: dict[str, Any], title: str) -> None:
+    """Soft-delete a note by title (sets trashedAt), matching Notes App behavior."""
+    notes = _apps(state, "notes").setdefault("notes", [])
+    for note in notes:
+        if str(note.get("title") or "") == title:
+            note["trashedAt"] = TEST_TIMESTAMP
+            note["updatedAt"] = TEST_TIMESTAMP
+            break
+
+
+def _trash_event(state: dict[str, Any], title: str) -> None:
+    """Soft-delete a calendar event by title (sets trashedAt), matching Calendar App behavior."""
+    events = _apps(state, "calendar").setdefault("events", [])
+    for event in events:
+        if str(event.get("title") or "") == title:
+            event["trashedAt"] = TEST_TIMESTAMP
+            break
+
+
+def _trash_contact(state: dict[str, Any]) -> None:
+    """Soft-delete the last contact (sets deletedAt), matching Contacts App behavior."""
+    contacts = _os(state).setdefault("providers", {}).setdefault("contacts", {}).setdefault("contacts", [])
+    if contacts:
+        contacts[-1]["deletedAt"] = TEST_TIMESTAMP
+        contacts[-1]["updatedAt"] = TEST_TIMESTAMP
+
+
+def _trash_file_node(state: dict[str, Any], path_or_name: str) -> None:
+    """Soft-delete a FileSystem node by path or name (sets trashedAt), matching FileSystem behavior."""
+    nodes = _fs_nodes(state)
+    needle = str(path_or_name).lower()
+    for node in nodes:
+        p = str(node.get("path") or "").lower()
+        n = str(node.get("name") or "").lower()
+        if needle in p or needle in n:
+            node["trashedAt"] = TEST_TIMESTAMP
+            node["modifiedAt"] = TEST_TIMESTAMP
+            break
 
 
 def _mutate_os_setting(

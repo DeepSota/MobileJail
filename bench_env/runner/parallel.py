@@ -1,6 +1,7 @@
 """ParallelRunner - 并行评测 (async)"""
 
 import asyncio
+import os
 from typing import Any, Callable, Optional
 
 from bench_env.runner.base import BaseRunner, EpisodeResult, Evaluator, RunnerConfig
@@ -100,10 +101,11 @@ class ParallelRunner(BaseRunner):
             with tqdm_logging_redirect():
                 pbar = tqdm(
                     total=total_episodes,
-                    desc="Evaluating",
-                    unit="ep",
+                    desc="Tasks",
+                    unit="task",
                     dynamic_ncols=True,
                     disable=not self.verbose,
+                    file=None if self.verbose else open(os.devnull, "w"),
                 )
                 try:
                     async with self.env_pool:

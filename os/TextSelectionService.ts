@@ -176,8 +176,22 @@ export const TextSelectionService = {
   performCopy(): void {
     const state = base.getState();
     if (!state.selectedText) return;
-    TextSelectionService.suppressAutoMenu();
+    const el = state.targetElement;
     clipboardAdapter.copyText(state.selectedText);
+    // Clear text selection on the target element so the menu doesn't
+    // re-appear after the suppress period (e.g. Agent sees "复制" again
+    // and thinks copy failed, entering a retry loop).
+    if (el) {
+      try {
+        if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+          el.setSelectionRange(0, 0);
+        } else {
+          const sel = window.getSelection();
+          if (sel) sel.removeAllRanges();
+        }
+      } catch { /* ignore */ }
+    }
+    TextSelectionService.suppressAutoMenu();
     TextSelectionService.hideSelectionMenu();
   },
 

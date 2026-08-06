@@ -14,13 +14,7 @@ from typing import Any
 
 _GENERATED_ROOT = Path(__file__).resolve().parent / "generated_task"
 
-JAILBREAK_BATCHES = (
-    "jailbreak_140_batch1",
-    "jailbreak_140_batch2",
-    "jailbreak_140_batch3",
-    "jailbreak_140_batch4",
-    "jailbreak_140_batch5",
-)
+JAILBREAK_SUITE = "jailbreak_140"
 
 
 @dataclass(frozen=True)
@@ -61,10 +55,9 @@ def _read_task_order(suite: str) -> list[str]:
 def _ordered_jailbreak_descriptors() -> list[TaskDescriptor]:
     out: list[TaskDescriptor] = []
     ordinal = 0
-    for suite in JAILBREAK_BATCHES:
-        for class_name in _read_task_order(suite):
-            ordinal += 1
-            out.append(TaskDescriptor("jailbreak_140", suite, class_name, ordinal))
+    for class_name in _read_task_order(JAILBREAK_SUITE):
+        ordinal += 1
+        out.append(TaskDescriptor("jailbreak_140", JAILBREAK_SUITE, class_name, ordinal))
     if len(out) != 140:
         raise RuntimeError(
             f"expected 140 aggregate jailbreak tasks, found {len(out)}"

@@ -18,7 +18,7 @@ import {
   IcSearch, IcFilter, IcSelectAll,
   IcShare, IcDelete, IcEdit,
   IcHeart, IcImage, IcVideo, IcCheck,
-  IcAddPhoto, IcGrid, IcSparkles, IcScissors, IcFile, IcUser, IcCamera,
+  IcAddPhoto, IcFolderPlus, IcGrid, IcSparkles, IcScissors, IcFile, IcUser, IcCamera,
   IcRefresh,
   IcAddTo, IcWallpaper, IcInfo, IcGeneratePdf, IcExtract,
   IcDocEdit, IcWatermark, IcClipboard, IcRename
@@ -26,7 +26,7 @@ import {
 import * as MediaService from '../../os/MediaService';
 import * as FileSystem from '../../os/FileSystemService';
 import { Toast } from '../../os/components/Toast';
-import { MediaItem, Album, FSNode } from '../../os/types';
+import { MediaItem, Album, FSNode, UserAlbumDef } from '../../os/types';
 import { useActivityContext } from '../../os/ActivityContext';
 import { useAppNavigationHandler } from '../../os/hooks/useAppNavigationHandler';
 import { dimensToCssVars, themeToCssVars } from '../../os/utils/themeToCssVars';
@@ -44,7 +44,7 @@ import ContentResolver from '../../os/ContentResolver';
 import { CollapsingToolbar, CollapsingLargeTitle, TOOLBAR_SPACER_HEIGHT } from '../../os/components/CollapsingToolbar';
 import * as TimeService from '@/os/TimeService';
 import { useGalleryGestures } from './hooks/useGalleryGestures';
-import { ensureMediaProviderRegistered } from '../../os/providers/MediaProvider';
+import { ensureMediaProviderRegistered, createAlbum, renameAlbum, deleteAlbum, moveToAlbum, getUserAlbums, useMediaProviderStore, getPinnedAlbumIds, togglePinAlbum } from '../../os/providers/MediaProvider';
 import {
   isPrivateAttachmentPath,
   resolveIntentImageSource,
@@ -370,14 +370,14 @@ const FloatingTabPill: React.FC<{ activeTab: HomeTab; onTabChange: (tab: HomeTab
   onTabChange
 }) => {
   const s = useAppStrings(strings, stringsEn);
-  const tabs: { id: HomeTab; label: string; icon: React.ReactNode }[] = [
-    { id: 'photos', label: s.tab_photos, icon: <IcImage size={22} strokeWidth={dimens.icStrokeWidth} /> },
-    { id: 'albums', label: s.tab_albums, icon: <IcAddPhoto size={22} strokeWidth={dimens.icStrokeWidth} /> },
+  const tabs: { id: HomeTab; label: string }[] = [
+    { id: 'photos', label: s.tab_photos },
+    { id: 'albums', label: s.tab_albums },
   ];
 
   return (
     <div className="fixed left-1/2 -translate-x-1/2 bottom-(--app-tab-pill-bottom) z-40">
-      <div className="bg-white/92 backdrop-blur-xl rounded-full shadow-lg border border-slate-200/70 px-2 py-1 flex items-center gap-1">
+      <div className="bg-white/92 backdrop-blur-xl rounded-full shadow-lg border border-slate-200/70 px-1.5 py-1 flex items-center gap-0.5">
         {tabs.map(tab => {
           const isActive = activeTab === tab.id;
           return (
@@ -386,13 +386,13 @@ const FloatingTabPill: React.FC<{ activeTab: HomeTab; onTabChange: (tab: HomeTab
               type="button"
               aria-label={tab.label}
               onClick={() => onTabChange(tab.id)}
-              className={`w-14 h-11 rounded-full flex items-center justify-center transition-colors ${
+              className={`px-4 h-10 rounded-full flex items-center justify-center transition-colors text-[14px] font-semibold ${
                 isActive
                   ? 'text-slate-900 bg-slate-100/80'
                   : 'text-slate-400 active:bg-slate-100/60'
               }`}
             >
-              {tab.icon}
+              {tab.label}
             </button>
           );
         })}
@@ -417,25 +417,35 @@ const PhotoGridItem: React.FC<{
   const favorite = favorites.has(item.path);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLongPress = useRef(false);
+  const pressStartRef = useRef<{ x: number; y: number } | null>(null);
 
   const clearTimer = () => {
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
       longPressTimer.current = null;
     }
+    pressStartRef.current = null;
   };
-  
-  const handlePointerDown = () => {
+
+  const handlePointerDown = (e: React.PointerEvent) => {
     isLongPress.current = false;
+    pressStartRef.current = { x: e.clientX, y: e.clientY };
     clearTimer();
     longPressTimer.current = setTimeout(() => {
       isLongPress.current = true;
       onLongPress?.();
-    }, 500);
+    }, 350);
   };
-  
+
   const handlePointerUp = () => {
     clearTimer();
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!pressStartRef.current) return;
+    const dx = e.clientX - pressStartRef.current.x;
+    const dy = e.clientY - pressStartRef.current.y;
+    if (Math.sqrt(dx * dx + dy * dy) > 10) clearTimer();
   };
   
   const handleClick = () => {
@@ -451,12 +461,14 @@ const PhotoGridItem: React.FC<{
   };
   
   return (
-    <div 
+    <div
       className="relative aspect-square overflow-hidden group"
+      data-no-clipboard
       onClick={handleClick}
       onContextMenu={(e) => e.preventDefault()}
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
+      onPointerMove={handlePointerMove}
       onPointerCancel={handlePointerUp}
       onPointerLeave={handlePointerUp}
     >
@@ -516,6 +528,9 @@ const PhotosPage: React.FC<{ onSelectModeChange?: (active: boolean) => void }> =
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [scrollTop, setScrollTop] = useState(0);
+  const [showMore, setShowMore] = useState(false);
+  const [showCreateAlbum, setShowCreateAlbum] = useState(false);
+  const [showPhotoAlbumPicker, setShowPhotoAlbumPicker] = useState(false);
   const { toast, showToast } = useGalleryToast();
 
   useEffect(() => {
@@ -582,9 +597,22 @@ const PhotosPage: React.FC<{ onSelectModeChange?: (active: boolean) => void }> =
   const selectTitle = selected.size > 0
     ? `${s.select_prefix}${selected.size}${s.select_suffix}`
     : s.select_prompt;
-  
+
+  const handleCreateAlbum = useCallback(async (name: string) => {
+    const existing = getUserAlbums().find(a => a.name === name);
+    if (existing) {
+      showToast(s.album_name_exists);
+      return;
+    }
+    await createAlbum(name);
+    setShowCreateAlbum(false);
+    showToast(s.album_created);
+  }, [s, showToast]);
+
   return (
-    <div className="h-full bg-app-surface flex flex-col relative overflow-hidden">
+    <div
+      className="h-full bg-app-surface flex flex-col relative overflow-hidden"
+    >
       {/* Top bar: CollapsingToolbar in select mode, GalleryTopBar otherwise */}
       {selectMode ? (
         <CollapsingToolbar
@@ -618,13 +646,31 @@ const PhotosPage: React.FC<{ onSelectModeChange?: (active: boolean) => void }> =
             >
               <IcFilter size={22} className="text-slate-900" />
             </button>,
-            <button type="button" className="w-10 h-10 flex items-center justify-center active:opacity-60" aria-label={s.more_label}>
+            <button type="button" className="w-10 h-10 flex items-center justify-center active:opacity-60" aria-label={s.more_label} onClick={() => setShowMore(true)}>
               <IcMoreVert size={22} className="text-slate-900" />
             </button>
           ]}
         />
       )}
-      
+
+      {/* More dropdown (top-right) */}
+      <TopRightDropdown
+        open={showMore}
+        onClose={() => setShowMore(false)}
+        items={[
+          { icon: <IcFolderPlus size={20} strokeWidth={1.6} />, label: s.create_album, onClick: () => { setShowMore(false); setShowCreateAlbum(true); } },
+        ]}
+      />
+
+      {/* Create album dialog */}
+      <AlbumNameDialog
+        title={s.create_album}
+        placeholder={s.create_album_hint}
+        open={showCreateAlbum}
+        onClose={() => setShowCreateAlbum(false)}
+        onConfirm={handleCreateAlbum}
+      />
+
       {/* Content */}
       <div 
         className="flex-1 overflow-y-auto pb-32 no-scrollbar"
@@ -685,17 +731,24 @@ const PhotosPage: React.FC<{ onSelectModeChange?: (active: boolean) => void }> =
         <div className="absolute bottom-0 left-0 right-0 bg-app-surface border-t border-slate-100 flex items-center justify-around py-3 z-40 animate-in slide-in-from-bottom-10 duration-200">
           <button
             onClick={handleBatchFavorite}
-            className="flex flex-col items-center gap-1.5 px-4 active:opacity-60"
+            className="flex flex-col items-center gap-1.5 px-3 active:opacity-60"
           >
             <IcHeart size={22} className="text-slate-700" />
             <span className="text-[11px] text-slate-700">{s.action_favorite}</span>
+          </button>
+          <button
+            onClick={() => setShowPhotoAlbumPicker(true)}
+            className="flex flex-col items-center gap-1.5 px-3 active:opacity-60"
+          >
+            <IcFolderPlus size={22} className="text-slate-700" />
+            <span className="text-[11px] text-slate-700">{s.move_to_album}</span>
           </button>
           <button
             onClick={() => {
               const paths = Array.from(selected);
               if (!shareImagesAsIntent(paths)) showToast(s.share_failed);
             }}
-            className="flex flex-col items-center gap-1.5 px-4 active:opacity-60"
+            className="flex flex-col items-center gap-1.5 px-3 active:opacity-60"
             data-action="gallery.select.share"
             data-action-type="tap"
           >
@@ -704,13 +757,37 @@ const PhotosPage: React.FC<{ onSelectModeChange?: (active: boolean) => void }> =
           </button>
           <button
             onClick={handleBatchDelete}
-            className="flex flex-col items-center gap-1.5 px-4 active:opacity-60"
+            className="flex flex-col items-center gap-1.5 px-3 active:opacity-60"
           >
             <IcDelete size={22} className="text-red-500" />
             <span className="text-[11px] text-red-500">{s.action_delete}</span>
           </button>
         </div>
       )}
+
+      {/* Album picker for batch move-to-album */}
+      <AlbumPickerDialog
+        open={showPhotoAlbumPicker}
+        title={s.move_to_album}
+        onClose={() => setShowPhotoAlbumPicker(false)}
+        onSelect={async (targetAlbumId) => {
+          setShowPhotoAlbumPicker(false);
+          const paths = Array.from(selected);
+          let moved = 0;
+          for (const p of paths) {
+            try { await moveToAlbum(p, targetAlbumId); moved++; } catch (e) { console.error('[Gallery] moveToAlbum failed:', e); }
+          }
+          if (moved > 0) {
+            showToast(s.photo_moved);
+            setSelected(new Set());
+            setSelectMode(false);
+            // Reload items
+            const loadedItems = MediaService.getMediaItems({ type: 'all' });
+            loadedItems.sort((a, b) => b.createdAt - a.createdAt);
+            setItems(loadedItems);
+          }
+        }}
+      />
       
       {/* Delete confirmation dialog */}
       <ConfirmDialog
@@ -731,6 +808,87 @@ const PhotosPage: React.FC<{ onSelectModeChange?: (active: boolean) => void }> =
 // ============================================================================
 // Albums Page
 // ============================================================================
+// Reusable album card with long-press support
+const AlbumCard: React.FC<{
+  album: Album;
+  onOpen: (albumId: string) => void;
+  onLongPress: (album: Album) => void;
+  isPinned?: boolean;
+}> = ({ album, onOpen, onLongPress, isPinned }) => {
+  const s = useAppStrings(strings, stringsEn);
+  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isLongPress = useRef(false);
+  const pressStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    isLongPress.current = false;
+    pressStartRef.current = { x: e.clientX, y: e.clientY };
+    if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+    pressTimerRef.current = setTimeout(() => {
+      isLongPress.current = true;
+      onLongPress(album);
+    }, 350);
+  };
+  const clearPressTimer = () => {
+    if (pressTimerRef.current) { clearTimeout(pressTimerRef.current); pressTimerRef.current = null; }
+    pressStartRef.current = null;
+  };
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!pressStartRef.current) return;
+    const dx = e.clientX - pressStartRef.current.x;
+    const dy = e.clientY - pressStartRef.current.y;
+    if (Math.sqrt(dx * dx + dy * dy) > 10) clearPressTimer();
+  };
+
+  const handleClick = () => {
+    if (isLongPress.current) {
+      isLongPress.current = false;
+      return;
+    }
+    onOpen(album.id);
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      onContextMenu={(e) => { e.preventDefault(); onLongPress(album); }}
+      onPointerDown={handlePointerDown}
+      onPointerUp={clearPressTimer}
+      onPointerMove={handlePointerMove}
+      onPointerCancel={clearPressTimer}
+      onPointerLeave={clearPressTimer}
+      className="text-left active:scale-[0.98] transition-transform"
+    >
+      <div className="aspect-square bg-slate-100 rounded-2xl overflow-hidden border border-slate-100 relative">
+        {album.coverUri ? (
+          <AsyncImage
+            path={album.coverPath || ''}
+            fallbackUri={album.coverUri}
+            className="w-full h-full object-cover"
+            alt={album.name}
+          />
+        ) : (
+          <div className={`w-full h-full flex items-center justify-center ${album.type === 'user' ? 'bg-gradient-to-br from-blue-50 to-indigo-100' : 'bg-gradient-to-br from-slate-100 to-slate-200'}`}>
+            <IcImage size={28} className={album.type === 'user' ? 'text-indigo-300' : 'text-slate-300'} />
+          </div>
+        )}
+        {isPinned && (
+          <div className="absolute top-1 right-1 w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center">
+            <span className="text-white text-[9px] font-bold">↑</span>
+          </div>
+        )}
+      </div>
+      <div className="mt-2 px-0.5">
+        <div className="text-[15px] font-medium text-slate-900 truncate">{album.name}</div>
+        <div className="text-[12px] text-slate-500">{album.count}</div>
+      </div>
+    </button>
+  );
+};
+
+// ============================================================================
+// Albums Page
+// ============================================================================
 const AlbumsPage: React.FC = () => {
   const { go } = useGalleryGestures();
   const s = useAppStrings(strings, stringsEn);
@@ -742,12 +900,22 @@ const AlbumsPage: React.FC = () => {
     selfie: 0,
   });
   const [scrollTop, setScrollTop] = useState(0);
-  
-  useEffect(() => {
+  const [showMore, setShowMore] = useState(false);
+
+  // Album management state
+  const [showCreateAlbum, setShowCreateAlbum] = useState(false);
+  const [showRenameAlbum, setShowRenameAlbum] = useState(false);
+  const [showDeleteAlbum, setShowDeleteAlbum] = useState(false);
+  const [targetAlbum, setTargetAlbum] = useState<Album | null>(null);
+  const { showToast } = useGalleryToast();
+
+  const reloadAlbums = useCallback(() => {
     const loadedAlbums = MediaService.getAlbums();
     setAlbums(loadedAlbums);
+  }, []);
 
-    // Best-effort counts (full system classification not modelled in sim)
+  useEffect(() => {
+    reloadAlbums();
     const screenshotCount = MediaService.getMediaItems({ albumId: 'screenshots' }).length;
     const cameraCount = MediaService.getMediaItems({ albumId: 'camera' }).length;
     setMoreCounts(prev => ({
@@ -755,14 +923,69 @@ const AlbumsPage: React.FC = () => {
       documents: screenshotCount,
       selfie: cameraCount,
     }));
+  }, [reloadAlbums]);
+
+  // Subscribe to MediaProvider store changes so album list refreshes after CRUD
+  useEffect(() => {
+    const unsub = useMediaProviderStore.subscribe(reloadAlbums);
+    return unsub;
+  }, [reloadAlbums]);
+
+  const handleCreateAlbum = useCallback(async (name: string) => {
+    const existing = getUserAlbums().find(a => a.name === name);
+    if (existing) {
+      showToast(s.album_name_exists);
+      return;
+    }
+    await createAlbum(name);
+    setShowCreateAlbum(false);
+    showToast(s.album_created);
+    reloadAlbums();
+  }, [s, showToast, reloadAlbums]);
+
+  const handleRenameAlbum = useCallback(async (newName: string) => {
+    if (!targetAlbum) return;
+    await renameAlbum(targetAlbum.id, newName);
+    setShowRenameAlbum(false);
+    setTargetAlbum(null);
+    showToast(s.album_renamed);
+    reloadAlbums();
+  }, [targetAlbum, s, showToast, reloadAlbums]);
+
+  const handleDeleteAlbum = useCallback(async () => {
+    if (!targetAlbum) return;
+    try {
+      await deleteAlbum(targetAlbum.id);
+    } catch (e) {
+      console.error('[Gallery] deleteAlbum failed:', e);
+    }
+    setShowDeleteAlbum(false);
+    setTargetAlbum(null);
+    showToast(s.album_deleted);
+    reloadAlbums();
+  }, [targetAlbum, s, showToast, reloadAlbums]);
+
+  const handleAlbumLongPress = useCallback((album: Album) => {
+    setTargetAlbum(album);
   }, []);
-  
-  // Separate into main albums and app albums
-  const systemAlbums = albums.filter(a => a.type === 'system');
-  const appAlbums = albums.filter(a => a.type === 'app');
+
+  const pinnedIds = useSyncExternalStore(
+    useCallback((l: () => void) => useMediaProviderStore.subscribe(l), []),
+    () => getPinnedAlbumIds(),
+    () => getPinnedAlbumIds(),
+  );
+  const isPinned = targetAlbum ? pinnedIds.includes(targetAlbum.id) : false;
+
+  // Separate into pinned / system / app / user albums
+  const pinnedAlbums = albums.filter(a => pinnedIds.includes(a.id));
+  const unpinnedSystemAlbums = albums.filter(a => a.type === 'system' && !pinnedIds.includes(a.id));
+  const unpinnedAppAlbums = albums.filter(a => a.type === 'app' && !pinnedIds.includes(a.id));
+  const unpinnedUserAlbums = albums.filter(a => a.type === 'user' && !pinnedIds.includes(a.id));
   
   return (
-    <div className="h-full bg-app-bg flex flex-col">
+    <div
+      className="h-full bg-app-bg flex flex-col"
+    >
       {/* Shared TopBar (icons row) */}
       <GalleryTopBar
         scrollTop={scrollTop}
@@ -771,9 +994,18 @@ const AlbumsPage: React.FC = () => {
             <IcSearch size={22} className="text-slate-900" />
           </button>,
           null,
-          <button type="button" className="w-10 h-10 flex items-center justify-center active:opacity-60" aria-label={s.more_label}>
+          <button type="button" className="w-10 h-10 flex items-center justify-center active:opacity-60" aria-label={s.more_label} onClick={() => setShowMore(true)}>
             <IcMoreVert size={22} className="text-slate-900" />
           </button>
+        ]}
+      />
+
+      {/* More dropdown (top-right) */}
+      <TopRightDropdown
+        open={showMore}
+        onClose={() => setShowMore(false)}
+        items={[
+          { icon: <IcFolderPlus size={20} strokeWidth={1.6} />, label: s.create_album, onClick: () => { setShowMore(false); setShowCreateAlbum(true); } },
         ]}
       />
 
@@ -792,72 +1024,43 @@ const AlbumsPage: React.FC = () => {
             <IcNavForward size={18} className="text-slate-400" />
           </div>
           <div className="px-4 pb-4">
+            {/* Pinned albums section */}
+            {pinnedAlbums.length > 0 && (
+              <div className="mb-5">
+                <div className="text-[13px] font-semibold text-slate-500 mb-3">{s.pinned_label}</div>
+                <div className="grid grid-cols-2 gap-3">
+                  {pinnedAlbums.map(album => (
+                    <AlbumCard key={album.id} album={album} onOpen={(id) => go('album.open', { albumId: id })} onLongPress={handleAlbumLongPress} isPinned />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* System albums */}
             <div className="grid grid-cols-2 gap-3">
-              {systemAlbums.map(album => (
-                <button
-                  key={album.id}
-                  onClick={() => go('album.open', { albumId: album.id })}
-                  className="text-left active:scale-[0.98] transition-transform"
-                >
-                  <div className="aspect-square bg-slate-100 rounded-2xl overflow-hidden border border-slate-100">
-                    {album.coverUri ? (
-                      <AsyncImage
-                        path={album.coverPath || ''}
-                        fallbackUri={album.coverUri}
-                        className="w-full h-full object-cover"
-                        alt={album.name}
-                      />
-                    ) : (
-                      <div className="w-full h-full bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center">
-                        <IcImage size={28} className="text-slate-300" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="mt-2 px-0.5">
-                    <div className="text-[15px] font-medium text-slate-900 truncate">
-                      {album.name}
-                    </div>
-                    <div className="text-[12px] text-slate-500">
-                      {album.count}
-                    </div>
-                  </div>
-                </button>
+              {unpinnedSystemAlbums.map(album => (
+                <AlbumCard key={album.id} album={album} onOpen={(id) => go('album.open', { albumId: id })} onLongPress={handleAlbumLongPress} />
               ))}
             </div>
 
-            {appAlbums.length > 0 && (
+            {unpinnedAppAlbums.length > 0 && (
               <div className="mt-5">
                 <div className="text-[13px] font-semibold text-slate-500 mb-3">{s.albums_app_albums}</div>
                 <div className="grid grid-cols-2 gap-3">
-                  {appAlbums.map(album => (
-                    <button
-                      key={album.id}
-                      onClick={() => go('album.open', { albumId: album.id })}
-                      className="text-left active:scale-[0.98] transition-transform"
-                    >
-                      <div className="aspect-square bg-slate-100 rounded-2xl overflow-hidden border border-slate-100">
-                        {album.coverUri ? (
-                          <AsyncImage
-                            path={album.coverPath || ''}
-                            fallbackUri={album.coverUri}
-                            className="w-full h-full object-cover"
-                            alt={album.name}
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center">
-                            <IcImage size={28} className="text-slate-300" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="mt-2 px-0.5">
-                        <div className="text-[15px] font-medium text-slate-900 truncate">
-                          {album.name}
-                        </div>
-                        <div className="text-[12px] text-slate-500">
-                          {album.count}
-                        </div>
-                      </div>
-                    </button>
+                  {unpinnedAppAlbums.map(album => (
+                    <AlbumCard key={album.id} album={album} onOpen={(id) => go('album.open', { albumId: id })} onLongPress={handleAlbumLongPress} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* User albums */}
+            {unpinnedUserAlbums.length > 0 && (
+              <div className="mt-5">
+                <div className="text-[13px] font-semibold text-slate-500 mb-3">{s.user_albums_title}</div>
+                <div className="grid grid-cols-2 gap-3">
+                  {unpinnedUserAlbums.map(album => (
+                    <AlbumCard key={album.id} album={album} onOpen={(id) => go('album.open', { albumId: id })} onLongPress={handleAlbumLongPress} />
                   ))}
                 </div>
               </div>
@@ -865,55 +1068,20 @@ const AlbumsPage: React.FC = () => {
           </div>
         </div>
 
+        {/* Create album button */}
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={() => setShowCreateAlbum(true)}
+            className="w-full h-12 rounded-2xl bg-blue-500 text-white font-semibold active:bg-blue-600 flex items-center justify-center gap-2"
+          >
+            <IcFolderPlus size={20} />
+            <span>{s.create_album}</span>
+          </button>
+        </div>
+
         {/* Tools / More list */}
         <div className="mt-4 bg-app-surface rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
-          {/* Section: 创作 */}
-          <div className="px-4 pt-4 pb-2 flex items-center justify-between">
-            <div className="text-[18px] font-semibold text-slate-900">{s.creation_title}</div>
-            <IcNavForward size={18} className="text-slate-400" />
-          </div>
-          <div className="divide-y divide-slate-100">
-            <button type="button" className="w-full px-4 py-3 flex items-center justify-between active:bg-slate-50">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-2xl bg-slate-100 flex items-center justify-center">
-                  <IcGrid size={18} className="text-slate-600" />
-                </div>
-                <div className="text-[15px] font-medium text-slate-900">{s.creation_collage}</div>
-              </div>
-              <IcNavForward size={18} className="text-slate-300" />
-            </button>
-
-            <button type="button" className="w-full px-4 py-3 flex items-center justify-between active:bg-slate-50">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-2xl bg-orange-100 flex items-center justify-center">
-                  <IcScissors size={18} className="text-orange-500" />
-                </div>
-                <div className="text-[15px] font-medium text-slate-900">{s.creation_video_edit}</div>
-              </div>
-              <IcNavForward size={18} className="text-slate-300" />
-            </button>
-
-            <button type="button" className="w-full px-4 py-3 flex items-center justify-between active:bg-slate-50">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-2xl bg-blue-100 flex items-center justify-center">
-                  <IcSparkles size={18} className="text-blue-500" />
-                </div>
-                <div className="text-[15px] font-medium text-slate-900">{s.creation_smart_clip}</div>
-              </div>
-              <IcNavForward size={18} className="text-slate-300" />
-            </button>
-
-            <button type="button" className="w-full px-4 py-3 flex items-center justify-between active:bg-slate-50">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-2xl bg-purple-100 flex items-center justify-center">
-                  <IcVideo size={18} className="text-purple-500" />
-                </div>
-                <div className="text-[15px] font-medium text-slate-900">{s.creation_photo_movie}</div>
-              </div>
-              <IcNavForward size={18} className="text-slate-300" />
-            </button>
-          </div>
-
           {/* Section: 更多 */}
           <div className="px-4 pt-5 pb-2 flex items-center justify-between">
             <div className="text-[18px] font-semibold text-slate-900">{s.more_title}</div>
@@ -982,6 +1150,120 @@ const AlbumsPage: React.FC = () => {
           {s.more_customize}
         </button>
       </div>
+
+      {/* ---- Album management dialogs ---- */}
+
+      {/* Create Album Dialog */}
+      {showCreateAlbum && (
+        <AlbumNameDialog
+          title={s.create_album}
+          placeholder={s.create_album_hint}
+          open={showCreateAlbum}
+          onClose={() => setShowCreateAlbum(false)}
+          onConfirm={handleCreateAlbum}
+        />
+      )}
+
+      {/* Rename Album Dialog */}
+      {showRenameAlbum && targetAlbum && (
+        <AlbumNameDialog
+          title={s.rename_album}
+          placeholder={s.rename_album_hint}
+          defaultValue={targetAlbum.name}
+          open={showRenameAlbum}
+          onClose={() => { setShowRenameAlbum(false); setTargetAlbum(null); }}
+          onConfirm={handleRenameAlbum}
+        />
+      )}
+
+      {/* Long-press action sheet for albums (unified: normal + delete confirmation) */}
+      {targetAlbum && !showRenameAlbum && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center" onClick={() => { setTargetAlbum(null); setShowDeleteAlbum(false); }}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div
+            className="relative w-full max-w-[400px] bg-white rounded-t-3xl pb-8 px-4 pt-3 animate-slide-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mb-4" />
+            {!showDeleteAlbum ? (
+              <>
+                <div className="text-[15px] font-semibold text-slate-900 text-center mb-3 truncate">
+                  {targetAlbum.name}
+                </div>
+                {/* Open album — navigate into album to manage photos */}
+                <button
+                  type="button"
+                  className="w-full py-3 text-[15px] font-medium text-blue-600 active:bg-slate-50 rounded-xl"
+                  onClick={() => {
+                    setTargetAlbum(null);
+                    go('album.open', { albumId: targetAlbum.id });
+                  }}
+                >
+                  {'查看照片'}
+                </button>
+                {/* Pin / Unpin — available for all albums */}
+                <button
+                  type="button"
+                  className="w-full py-3 text-[15px] font-medium text-blue-600 active:bg-slate-50 rounded-xl"
+                  onClick={() => { togglePinAlbum(targetAlbum.id); setTargetAlbum(null); reloadAlbums(); }}
+                >
+                  {isPinned ? s.unpin_album : s.pin_album}
+                </button>
+                {/* Rename — available for all albums */}
+                <button
+                  type="button"
+                  className="w-full py-3 text-[15px] font-medium text-blue-600 active:bg-slate-50 rounded-xl"
+                  onClick={() => { setShowRenameAlbum(true); }}
+                >
+                  {s.rename_album}
+                </button>
+                {/* Delete album — only for user albums */}
+                {targetAlbum.type === 'user' && (
+                <button
+                  type="button"
+                  className="w-full py-3 text-[15px] font-medium text-red-500 active:bg-slate-50 rounded-xl"
+                  onClick={() => {
+                    setShowDeleteAlbum(true);
+                  }}
+                >
+                  {s.delete_album}
+                </button>
+                )}
+                <button
+                  type="button"
+                  className="w-full py-3 text-[15px] font-medium text-slate-500 active:bg-slate-50 rounded-xl"
+                  onClick={() => setTargetAlbum(null)}
+                >
+                  {s.dialog_cancel}
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="text-[15px] font-semibold text-slate-900 text-center mb-2">
+                  {s.delete_album}
+                </div>
+                <p className="text-[14px] text-slate-500 text-center mb-4 leading-relaxed">
+                  {s.delete_album_warning}
+                </p>
+                <button
+                  type="button"
+                  className="w-full py-3 text-[15px] font-semibold text-red-500 active:bg-red-50 rounded-xl"
+                  onClick={handleDeleteAlbum}
+                >
+                  {s.dialog_confirm}
+                </button>
+                <button
+                  type="button"
+                  className="w-full py-3 text-[15px] font-medium text-slate-500 active:bg-slate-50 rounded-xl"
+                  onClick={() => { setShowDeleteAlbum(false); }}
+                >
+                  {s.dialog_cancel}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1052,18 +1334,39 @@ const AlbumDetailPage: React.FC = () => {
   const s = useAppStrings(strings, stringsEn);
   const [items, setItems] = useState<MediaItem[]>([]);
   const [albumName, setAlbumName] = useState('');
+  const [albumType, setAlbumType] = useState<Album['type']>('system');
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [showAlbumPicker, setShowAlbumPicker] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showRenameAlbum, setShowRenameAlbum] = useState(false);
+  const [showDeleteAlbum, setShowDeleteAlbum] = useState(false);
+  const [showDetailMore, setShowDetailMore] = useState(false);
+  const { showToast } = useGalleryToast();
 
-  useEffect(() => {
+  const isDetailPinned = useSyncExternalStore(
+    useCallback((l: () => void) => useMediaProviderStore.subscribe(l), []),
+    () => getPinnedAlbumIds().includes(albumId || ''),
+    () => getPinnedAlbumIds().includes(albumId || ''),
+  );
+
+  const reloadItems = useCallback(() => {
     const albums = MediaService.getAlbums();
     const album = albums.find(a => a.id === albumId);
     setAlbumName(album?.name || s.album_default_name);
-    
+    setAlbumType(album?.type || 'system');
     const loadedItems = MediaService.getMediaItems({ albumId });
     loadedItems.sort((a, b) => b.createdAt - a.createdAt);
     setItems(loadedItems);
   }, [albumId, s.album_default_name]);
+
+  useEffect(() => { reloadItems(); }, [reloadItems]);
+
+  // Subscribe to MediaProvider changes so list refreshes after move/delete
+  useEffect(() => {
+    const unsub = useMediaProviderStore.subscribe(reloadItems);
+    return unsub;
+  }, [reloadItems]);
   
   const handleSelect = (path: string) => {
     const newSelected = new Set(selected);
@@ -1111,19 +1414,24 @@ const AlbumDetailPage: React.FC = () => {
             <span className="text-xs text-slate-500">{items.length}{s.photos_item_count_suffix}</span>
           </div>
         </div>
-        <button 
-          onClick={() => {
-            setSelectMode(!selectMode);
-            setSelected(new Set());
-          }}
-          className={`px-3 py-1.5 rounded-full text-sm font-medium mr-2 transition-all ${
-            selectMode 
-              ? 'bg-blue-500 text-white' 
-              : 'text-blue-500 active:bg-slate-100'
-          }`}
-        >
-          {selectMode ? s.album_done : s.album_select}
-        </button>
+        <div className="flex items-center gap-1 mr-1">
+        {selectMode ? (
+          <button
+            onClick={() => { setSelectMode(false); setSelected(new Set()); }}
+            className="px-3 py-1.5 rounded-full text-sm font-medium mr-2 bg-blue-500 text-white"
+          >
+            {s.album_done}
+          </button>
+        ) : (
+          <button
+            onClick={() => setShowDetailMore(true)}
+            className="w-10 h-10 flex items-center justify-center active:opacity-60"
+            aria-label={s.more_label}
+          >
+            <IcMoreVert size={22} className="text-slate-900" />
+          </button>
+        )}
+        </div>
       </div>
       
       {/* Photos grid */}
@@ -1170,12 +1478,123 @@ const AlbumDetailPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Select mode action bar */}
+      {selectMode && selected.size > 0 && (
+        <div className="shrink-0 bg-white border-t border-slate-200 px-4 py-3 flex items-center gap-3">
+          <button
+            type="button"
+            className="flex-1 h-10 rounded-xl bg-blue-50 text-blue-600 font-medium text-[14px] active:bg-blue-100 flex items-center justify-center gap-1.5"
+            onClick={() => setShowAlbumPicker(true)}
+          >
+            <IcFolderPlus size={18} />
+            {s.move_to_album}
+          </button>
+          <button
+            type="button"
+            className="flex-1 h-10 rounded-xl bg-red-50 text-red-500 font-medium text-[14px] active:bg-red-100 flex items-center justify-center gap-1.5"
+            onClick={() => setShowDeleteConfirm(true)}
+          >
+            <IcDelete size={18} />
+            {s.action_delete}
+          </button>
+        </div>
+      )}
+
+      {/* Detail page more dropdown */}
+      <TopRightDropdown
+        open={showDetailMore}
+        onClose={() => setShowDetailMore(false)}
+        items={[
+          { icon: <IcSelectAll size={20} />, label: s.album_select, onClick: () => { setShowDetailMore(false); setSelectMode(true); setSelected(new Set()); } },
+          { icon: <IcEdit size={20} />, label: s.rename_album, onClick: () => { setShowDetailMore(false); setShowRenameAlbum(true); } },
+          { icon: <span className="text-[16px] font-bold leading-none">{isDetailPinned ? '↓' : '↑'}</span>, label: isDetailPinned ? s.unpin_album : s.pin_album, onClick: () => { setShowDetailMore(false); togglePinAlbum(albumId || ''); reloadItems(); } },
+          ...(albumType === 'user' ? [{ icon: <IcDelete size={20} />, label: s.delete_album, onClick: () => { setShowDetailMore(false); setShowDeleteAlbum(true); } }] : []),
+        ]}
+      />
+
+      {/* Rename album dialog (for user albums) */}
+      <AlbumNameDialog
+        title={s.rename_album}
+        placeholder={s.rename_album_hint}
+        defaultValue={albumName}
+        open={showRenameAlbum}
+        onClose={() => setShowRenameAlbum(false)}
+        onConfirm={async (newName) => {
+          if (!albumId) return;
+          await renameAlbum(albumId, newName);
+          setShowRenameAlbum(false);
+          showToast(s.album_renamed);
+          reloadItems();
+        }}
+      />
+
+      {/* Delete album confirm (user albums only) */}
+      <ConfirmDialog
+        open={showDeleteAlbum}
+        title={s.delete_album}
+        message={s.delete_album_warning}
+        confirmText={s.dialog_confirm}
+        cancelText={s.dialog_cancel}
+        danger
+        onCancel={() => setShowDeleteAlbum(false)}
+        onConfirm={async () => {
+          setShowDeleteAlbum(false);
+          if (!albumId) return;
+          await deleteAlbum(albumId);
+          showToast(s.album_deleted);
+          back();
+        }}
+      />
+
+      {/* Album picker for move-to-album */}
+      <AlbumPickerDialog
+        open={showAlbumPicker}
+        title={s.move_to_album}
+        onClose={() => setShowAlbumPicker(false)}
+        excludeAlbumId={albumId}
+        onSelect={async (targetAlbumId) => {
+          setShowAlbumPicker(false);
+          const paths = Array.from(selected);
+          let moved = 0;
+          for (const p of paths) {
+            try {
+              await moveToAlbum(p, targetAlbumId);
+              moved++;
+            } catch (e) { console.error('[Gallery] moveToAlbum failed:', e); }
+          }
+          if (moved > 0) {
+            showToast(s.photo_moved);
+            setSelected(new Set());
+            setSelectMode(false);
+            reloadItems();
+          }
+        }}
+      />
+
+      {/* Delete confirmation */}
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title={s.delete_photo_title}
+        message={s.delete_photo_confirm_batch.replace('{count}', String(selected.size))}
+        confirmText={s.action_delete}
+        cancelText={s.dialog_cancel}
+        danger
+        onConfirm={async () => {
+          setShowDeleteConfirm(false);
+          const paths = Array.from(selected);
+          for (const p of paths) {
+            await MediaService.deleteMedia(p);
+          }
+          setSelected(new Set());
+          setSelectMode(false);
+          reloadItems();
+        }}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </div>
   );
 };
-
-// ============================================================================
-// Intent-launched single-image helpers
 // ============================================================================
 function fsNodeToMediaItem(node: FSNode): MediaItem {
   return {
@@ -1265,6 +1684,40 @@ const MorePopup: React.FC<{
   );
 };
 
+// Dropdown anchored to top-right corner (for PhotosPage / AlbumsPage "more" button)
+const TopRightDropdown: React.FC<{
+  open: boolean;
+  onClose: () => void;
+  items: MoreMenuItem[];
+}> = ({ open, onClose, items }) => {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[100] pointer-events-auto" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/20" />
+      <div
+        className="absolute top-[calc(var(--app-status-bar-height,40px)+52px)] right-3 bg-white rounded-[13px] w-[182px] overflow-hidden shadow-[0_6px_22px_rgba(0,0,0,0.18)] animate-in fade-in slide-in-from-top-2 duration-150"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="py-1">
+          {items.map((opt, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={opt.onClick}
+              className="w-full px-3 py-2.5 flex items-center gap-2.5 active:bg-slate-100 transition-colors"
+            >
+              <div className="w-6 h-6 flex items-center justify-center text-slate-700 shrink-0">
+                {opt.icon}
+              </div>
+              <div className="flex-1 text-left text-[15px] text-slate-900">{opt.label}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ============================================================================
 // Photo Details Dialog (拍摄时间 / 文件信息 / 文件路径)
 // ============================================================================
@@ -1349,6 +1802,143 @@ const PhotoDetailsDialog: React.FC<{
 // ============================================================================
 // Rename Dialog
 // ============================================================================
+// ============================================================================
+// Album Name Dialog (shared for create / rename)
+// ============================================================================
+const AlbumNameDialog: React.FC<{
+  open: boolean;
+  title: string;
+  placeholder: string;
+  defaultValue?: string;
+  onClose: () => void;
+  onConfirm: (value: string) => void;
+}> = ({ open, title, placeholder, defaultValue, onClose, onConfirm }) => {
+  const s = useAppStrings(strings, stringsEn);
+  const [value, setValue] = useState(defaultValue || '');
+
+  useEffect(() => {
+    if (open) setValue(defaultValue || '');
+  }, [open, defaultValue]);
+
+  if (!open) return null;
+
+  const handleConfirm = () => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    onConfirm(trimmed);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center px-6">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-app-surface rounded-2xl w-full max-w-[320px] overflow-hidden shadow-2xl animate-scale-in">
+        <div className="px-5 pt-5 pb-3">
+          <h3 className="text-[17px] font-semibold text-slate-900 text-center mb-4">{title}</h3>
+          <input
+            type="text"
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            placeholder={placeholder}
+            className="w-full px-4 py-3 border border-slate-200 rounded-xl text-[15px] text-slate-900 focus:outline-none focus:border-blue-500"
+            autoFocus
+            onKeyDown={e => e.key === 'Enter' && handleConfirm()}
+          />
+        </div>
+        <div className="flex border-t border-slate-200">
+          <button
+            onClick={onClose}
+            className="flex-1 py-3.5 text-[16px] font-medium text-blue-500 active:bg-slate-50 border-r border-slate-200"
+          >
+            {s.dialog_cancel}
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={!value.trim()}
+            className="flex-1 py-3.5 text-[16px] font-semibold text-blue-500 active:bg-slate-50 disabled:opacity-50"
+          >
+            {s.dialog_confirm}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============================================================================
+// Album Picker Dialog (bottom sheet for selecting target album)
+// ============================================================================
+const AlbumPickerDialog: React.FC<{
+  open: boolean;
+  title: string;
+  onClose: () => void;
+  onSelect: (albumId: string) => void;
+  excludeAlbumId?: string;
+}> = ({ open, title, onClose, onSelect, excludeAlbumId }) => {
+  const s = useAppStrings(strings, stringsEn);
+  const [albums, setAlbums] = useState<Album[]>([]);
+
+  useEffect(() => {
+    if (open) {
+      const all = MediaService.getAlbums();
+      // Exclude 'all' and the current album; show user + system + app albums
+      setAlbums(all.filter(a => a.id !== 'all' && a.id !== excludeAlbumId));
+    }
+  }, [open, excludeAlbumId]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40" />
+      <div
+        className="relative w-full max-w-[400px] bg-white rounded-t-3xl pb-8 px-4 pt-3 animate-slide-up"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mb-4" />
+        <div className="text-[15px] font-semibold text-slate-900 text-center mb-3">{title}</div>
+        <div className="max-h-[40vh] overflow-y-auto no-scrollbar">
+          {albums.length === 0 ? (
+            <div className="py-6 text-center text-slate-400 text-sm">{s.no_user_albums_hint}</div>
+          ) : (
+            albums.map(album => (
+              <button
+                key={album.id}
+                type="button"
+                className="w-full py-3 text-[15px] font-medium text-slate-900 active:bg-slate-50 rounded-xl text-left px-2 flex items-center gap-3"
+                onClick={() => onSelect(album.id)}
+              >
+                <div className="w-10 h-10 rounded-xl bg-slate-100 overflow-hidden shrink-0">
+                  {album.coverUri ? (
+                    <AsyncImage
+                      path={album.coverPath || ''}
+                      fallbackUri={album.coverUri}
+                      className="w-full h-full object-cover"
+                      alt={album.name}
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <IcImage size={20} className="text-slate-300" />
+                    </div>
+                  )}
+                </div>
+                <span className="flex-1 truncate">{album.name}</span>
+                <span className="text-[12px] text-slate-400">{album.count}</span>
+              </button>
+            ))
+          )}
+        </div>
+        <button
+          type="button"
+          className="w-full py-3 text-[15px] font-medium text-slate-500 active:bg-slate-50 rounded-xl mt-1"
+          onClick={onClose}
+        >
+          {s.dialog_cancel}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const RenameDialog: React.FC<{
   open: boolean;
   onClose: () => void;
@@ -1445,7 +2035,7 @@ const PhotoViewerPage: React.FC = () => {
   const searchParams = new URLSearchParams(location.search);
   const albumId = searchParams.get('album');
   const from = searchParams.get('from');
-  const modal = searchParams.get('modal') as 'more' | 'details' | 'rename' | null;
+  const modal = searchParams.get('modal') as 'more' | 'details' | 'rename' | 'add-to-album' | null;
 
   // useParams returns the URL-decoded :path segment; transitions expect the
   // encoded form (matching photo.open's `encodeURIComponent(item.path)` convention).
@@ -1475,6 +2065,15 @@ const PhotoViewerPage: React.FC = () => {
     }
     if (!encodedPath) return;
     go('photo.modal.rename.open', { path: encodedPath });
+  };
+  const openAddToAlbum = () => {
+    if (isReadOnlyAttachment) return;
+    if (isIntentMode) {
+      go('photo.intent.modal.add-to-album.open');
+      return;
+    }
+    if (!encodedPath) return;
+    go('photo.modal.add-to-album.open', { path: encodedPath });
   };
   const closeModal = () => back();
 
@@ -1784,7 +2383,7 @@ const PhotoViewerPage: React.FC = () => {
         onClose={closeModal}
         sections={[
           [
-            { icon: <IcAddTo size={22} strokeWidth={1.6} />, label: s.more_menu_add_to, onClick: closeModal },
+            { icon: <IcAddTo size={22} strokeWidth={1.6} />, label: s.more_menu_add_to, onClick: openAddToAlbum },
             { icon: <IcWallpaper size={22} strokeWidth={1.6} />, label: s.more_menu_set_wallpaper, onClick: closeModal },
             { icon: <IcInfo size={22} strokeWidth={1.6} />, label: s.more_menu_details, onClick: openDetails },
           ],
@@ -1817,6 +2416,24 @@ const PhotoViewerPage: React.FC = () => {
         onConfirm={doRename}
       />
 
+      {/* Add to album picker */}
+      <AlbumPickerDialog
+        open={modal === 'add-to-album' && !!item}
+        title={s.add_to_album}
+        onClose={closeModal}
+        onSelect={async (targetAlbumId) => {
+          if (!item) return;
+          try {
+            await moveToAlbum(item.path, targetAlbumId);
+            showToast(s.photo_moved);
+          } catch (e) {
+            console.error('[Gallery] moveToAlbum failed:', e);
+            showToast(s.rename_failed);
+          }
+          closeModal();
+        }}
+      />
+
       <Toast message={toast.message} visible={toast.visible} />
     </div>
   );
@@ -1828,7 +2445,40 @@ const PhotoViewerPage: React.FC = () => {
 const HomePage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<HomeTab>('photos');
   const [isSelectMode, setIsSelectMode] = useState(false);
-  
+  const swipeRef = useRef<{ x: number; y: number } | null>(null);
+  const swipeHandledRef = useRef(false);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    swipeRef.current = { x: e.clientX, y: e.clientY };
+    swipeHandledRef.current = false;
+  }, []);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    const start = swipeRef.current;
+    if (!start || swipeHandledRef.current) return;
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    if (Math.abs(dx) < 30) return; // wait for clear direction
+    if (Math.abs(dy) > Math.abs(dx)) {
+      // vertical scroll — abandon swipe detection
+      swipeRef.current = null;
+      return;
+    }
+    if (dx < -60) {
+      // swipe left → albums
+      setActiveTab(prev => prev === 'photos' ? 'albums' : prev);
+      swipeHandledRef.current = true;
+    } else if (dx > 60) {
+      // swipe right → photos
+      setActiveTab(prev => prev === 'albums' ? 'photos' : prev);
+      swipeHandledRef.current = true;
+    }
+  }, []);
+
+  const handlePointerUp = useCallback(() => {
+    swipeRef.current = null;
+  }, []);
+
   const renderContent = () => {
     switch (activeTab) {
       case 'photos':
@@ -1839,9 +2489,14 @@ const HomePage: React.FC = () => {
         return <PhotosPage onSelectModeChange={setIsSelectMode} />;
     }
   };
-  
+
   return (
-    <div className="h-full relative">
+    <div
+      className="h-full relative"
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+    >
       {renderContent()}
       {!isSelectMode && <FloatingTabPill activeTab={activeTab} onTabChange={setActiveTab} />}
     </div>

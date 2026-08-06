@@ -811,7 +811,7 @@ export const DetailPage: React.FC = () => {
 
           {/* Input row: textarea + send button */}
           <div className="px-4 py-3 flex items-end gap-2">
-            <div className="flex-1 bg-gray-100 rounded-xl px-4 py-2 focus-within:ring-1 ring-red-100 transition-all max-h-[120px] overflow-y-auto">
+            <div className="flex-1 bg-gray-100 rounded-xl px-4 py-2 focus-within:ring-1 ring-red-100 transition-all max-h-[120px] overflow-hidden">
               <textarea
                 ref={inputRef}
                 placeholder={replyToUsername ? `${s.reply} ${replyToUsername}...` : s.say_something}

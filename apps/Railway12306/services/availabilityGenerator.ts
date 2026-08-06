@@ -12,7 +12,7 @@
 
 import { getToday, fromTimestamp, parseToTimestamp } from '../../../os/TimeService';
 
-const PRESALE_DAYS = 15;
+const PRESALE_DAYS = 365;
 
 /** 席别基础紧张度（0=永远有票，1=永远售罄），整体调松保证 bench 任务不因票源干涸失败 */
 const SEAT_TIGHTNESS: Record<string, number> = {

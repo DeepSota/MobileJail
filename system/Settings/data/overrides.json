@@ -818,12 +818,204 @@
     "title": "双卡与移动网络",
     "categories": [
       {
+        "title": "默认卡设置",
+        "items": [
+          {
+            "type": "list",
+            "key": "default_data_sim",
+            "title": "默认数据SIM卡",
+            "defaultValue": "1",
+            "options": [
+              { "label": "SIM 1（中国移动）", "value": "1" },
+              { "label": "SIM 2（中国联通）", "value": "2" }
+            ]
+          },
+          {
+            "type": "list",
+            "key": "default_calls_sim",
+            "title": "默认通话SIM卡",
+            "defaultValue": "1",
+            "options": [
+              { "label": "SIM 1（中国移动）", "value": "1" },
+              { "label": "SIM 2（中国联通）", "value": "2" },
+              { "label": "每次询问", "value": "0" }
+            ]
+          },
+          {
+            "type": "list",
+            "key": "default_sms_sim",
+            "title": "默认短信SIM卡",
+            "defaultValue": "1",
+            "options": [
+              { "label": "SIM 1（中国移动）", "value": "1" },
+              { "label": "SIM 2（中国联通）", "value": "2" },
+              { "label": "每次询问", "value": "0" }
+            ]
+          }
+        ]
+      },
+      {
+        "title": "SIM 卡信息",
+        "items": [
+          {
+            "type": "preference",
+            "key": "sim1_info",
+            "title": "SIM 1（中国移动）",
+            "summary": "5G SA / 138****8888",
+            "targetPage": "sim1_info"
+          },
+          {
+            "type": "preference",
+            "key": "sim2_info",
+            "title": "SIM 2（中国联通）",
+            "summary": "4G / 156****6666",
+            "targetPage": "sim2_info"
+          }
+        ]
+      },
+      {
+        "title": "通用设置",
+        "items": [
+          {
+            "type": "switch",
+            "key": "mobile_data_enable",
+            "title": "移动数据",
+            "summary": "通过移动网络访问数据",
+            "defaultValue": "true"
+          },
+          {
+            "type": "preference",
+            "key": "data_usage_summary",
+            "title": "应用的流量使用情况",
+            "targetPage": "data_usage_summary"
+          },
+          {
+            "type": "preference",
+            "key": "billing_preference",
+            "title": "数据流量警告和上限",
+            "targetPage": "billing_preference"
+          },
+          {
+            "type": "preference",
+            "key": "wifi_calling",
+            "title": "WLAN 通话",
+            "summary": "使用 WLAN 通话以提升通话质量",
+            "targetPage": "wifi_calling"
+          },
+          {
+            "type": "preference",
+            "key": "network_selection",
+            "title": "网络选择",
+            "targetPage": "network_selection"
+          }
+        ]
+      },
+      {
+        "title": "eSIM",
         "items": [
           {
             "type": "preference",
             "key": "esim_management",
             "title": "eSIM 管理",
             "targetPage": "esim_management"
+          },
+          {
+            "type": "preference",
+            "key": "convert_to_esim",
+            "title": "转换为 eSIM",
+            "targetPage": "convert_to_esim"
+          },
+          {
+            "type": "preference",
+            "key": "transfer_esim",
+            "title": "将 eSIM 卡转移到其他设备上",
+            "targetPage": "transfer_esim"
+          },
+          {
+            "type": "preference",
+            "key": "erase_esim",
+            "title": "清除 eSIM 卡",
+            "targetPage": "erase_esim"
+          }
+        ]
+      }
+    ]
+  },
+  "sim1_info": {
+    "id": "sim1_info",
+    "title": "SIM 1",
+    "categories": [
+      {
+        "items": [
+          { "type": "value", "key": "slot0_phone_number", "title": "手机号码" },
+          { "type": "value", "key": "operator_name", "title": "运营商" },
+          { "type": "value", "key": "network_type_sim1", "title": "网络类型" },
+          { "type": "value", "key": "signal_strength", "title": "信号强度" },
+          { "type": "value", "key": "service_state", "title": "服务状态" },
+          { "type": "value", "key": "roaming_state", "title": "漫游状态" },
+          { "type": "value", "key": "iccid", "title": "ICCID" },
+          { "type": "value", "key": "imei_info", "title": "IMEI" }
+        ]
+      },
+      {
+        "title": "SIM 卡设置",
+        "items": [
+          {
+            "type": "switch",
+            "key": "data_roaming_sim1",
+            "title": "数据漫游",
+            "summary": "允许在漫游时使用移动数据",
+            "defaultValue": "false"
+          },
+          {
+            "type": "switch",
+            "key": "volte_sim1",
+            "title": "VoLTE",
+            "summary": "使用 LTE 服务提升语音通话质量",
+            "defaultValue": "true"
+          },
+          {
+            "type": "switch",
+            "key": "enabled_5g_sim1",
+            "title": "启用 5G",
+            "defaultValue": "true"
+          }
+        ]
+      }
+    ]
+  },
+  "sim2_info": {
+    "id": "sim2_info",
+    "title": "SIM 2",
+    "categories": [
+      {
+        "items": [
+          { "type": "value", "key": "slot1_phone_number", "title": "手机号码" },
+          { "type": "value", "key": "operator_name_sim2", "title": "运营商" },
+          { "type": "value", "key": "network_type_sim2", "title": "网络类型" },
+          { "type": "value", "key": "signal_strength", "title": "信号强度" },
+          { "type": "value", "key": "service_state", "title": "服务状态" },
+          { "type": "value", "key": "roaming_state_sim2", "title": "漫游状态" },
+          { "type": "value", "key": "iccid_sim2", "title": "ICCID" },
+          { "type": "value", "key": "imei_info_sim2", "title": "IMEI" }
+        ]
+      },
+      {
+        "title": "SIM 卡设置",
+        "items": [
+          {
+            "type": "switch",
+            "key": "data_roaming_sim2",
+            "title": "数据漫游",
+            "summary": "允许在漫游时使用移动数据",
+            "defaultValue": "false"
+          },
+          {
+            "type": "switch",
+            "key": "volte_sim2",
+            "title": "VoLTE",
+            "summary": "使用 LTE 服务提升语音通话质量",
+            "defaultValue": "true"
           }
         ]
       }
@@ -834,6 +1026,7 @@
     "title": "eSIM 管理",
     "categories": [
       {
+        "title": "已安装的 eSIM 配置",
         "items": [
           {
             "type": "switch",
@@ -841,6 +1034,277 @@
             "title": "旅行 eSIM",
             "summary": "关闭即清除此 eSIM 配置",
             "defaultValue": "true"
+          }
+        ]
+      },
+      {
+        "title": "eSIM 操作",
+        "items": [
+          {
+            "type": "preference",
+            "key": "add_esim",
+            "title": "添加 eSIM",
+            "summary": "扫描二维码或手动输入激活码"
+          },
+          {
+            "type": "preference",
+            "key": "transfer_esim",
+            "title": "将 eSIM 卡转移到其他设备上",
+            "targetPage": "transfer_esim"
+          },
+          {
+            "type": "preference",
+            "key": "erase_esim",
+            "title": "清除 eSIM 卡",
+            "targetPage": "erase_esim"
+          }
+        ]
+      }
+    ]
+  },
+  "erase_esim": {
+    "id": "erase_esim",
+    "title": "清除 eSIM 卡",
+    "categories": [
+      {
+        "items": [
+          {
+            "type": "switch",
+            "key": "erase_esim_confirmed",
+            "title": "清除旅行 eSIM",
+            "summary": "开启即清除此 eSIM 配置，此操作不可撤销",
+            "defaultValue": "false"
+          }
+        ]
+      },
+      {
+        "items": [
+          {
+            "type": "footer",
+            "key": "erase_esim_warning",
+            "title": "",
+            "summary": "清除 eSIM 后，您将无法使用此 SIM 卡的服务。如果需要重新激活，请联系您的运营商获取新的 eSIM 激活码。"
+          }
+        ]
+      }
+    ]
+  },
+  "wifi_calling": {
+    "id": "wifi_calling",
+    "title": "WLAN 通话",
+    "categories": [
+      {
+        "items": [
+          {
+            "type": "switch",
+            "key": "wifi_calling_enabled",
+            "title": "使用 WLAN 通话",
+            "summary": "通过 WLAN 网络拨打和接听电话",
+            "defaultValue": "false"
+          },
+          {
+            "type": "list",
+            "key": "wifi_calling_mode",
+            "title": "通话偏好设置",
+            "defaultValue": "wifi_preferred",
+            "options": [
+              { "label": "首选 WLAN", "value": "wifi_preferred" },
+              { "label": "首选移动网络", "value": "cellular_preferred" },
+              { "label": "仅 WLAN", "value": "wifi_only" }
+            ],
+            "dependency": "wifi_calling_enabled"
+          },
+          {
+            "type": "list",
+            "key": "wifi_calling_roaming_mode",
+            "title": "漫游偏好设置",
+            "defaultValue": "wifi_preferred",
+            "options": [
+              { "label": "首选 WLAN", "value": "wifi_preferred" },
+              { "label": "首选移动网络", "value": "cellular_preferred" }
+            ],
+            "dependency": "wifi_calling_enabled"
+          }
+        ]
+      },
+      {
+        "title": "紧急通话",
+        "items": [
+          {
+            "type": "preference",
+            "key": "emergency_address_key",
+            "title": "紧急联系地址",
+            "summary": "当您通过 WLAN 网络拨打紧急呼救电话时，系统会判定您位于这个位置"
+          }
+        ]
+      }
+    ]
+  },
+  "data_usage_summary": {
+    "id": "data_usage_summary",
+    "title": "流量使用情况",
+    "categories": [
+      {
+        "title": "移动数据",
+        "items": [
+          {
+            "type": "switch",
+            "key": "mobile_data_enable",
+            "title": "移动数据",
+            "summary": "通过移动网络访问数据",
+            "defaultValue": "true"
+          },
+          {
+            "type": "switch",
+            "key": "set_data_warning",
+            "title": "设置数据流量警告",
+            "defaultValue": "false"
+          },
+          {
+            "type": "switch",
+            "key": "set_data_limit",
+            "title": "设置数据流量上限",
+            "defaultValue": "false"
+          },
+          {
+            "type": "preference",
+            "key": "billing_preference",
+            "title": "数据流量警告和上限",
+            "targetPage": "billing_preference"
+          }
+        ]
+      },
+      {
+        "title": "当前周期",
+        "items": [
+          { "type": "value", "key": "data_usage_this_cycle", "title": "已使用数据" },
+          { "type": "value", "key": "data_usage_remaining", "title": "剩余数据" }
+        ]
+      }
+    ]
+  },
+  "billing_preference": {
+    "id": "billing_preference",
+    "title": "数据流量警告和上限",
+    "categories": [
+      {
+        "items": [
+          { "type": "value", "key": "billing_cycle_date", "title": "移动数据用量周期" },
+          {
+            "type": "switch",
+            "key": "set_data_warning",
+            "title": "设置数据流量警告",
+            "defaultValue": "false"
+          },
+          { "type": "value", "key": "data_warning_level", "title": "数据流量警告级别" },
+          {
+            "type": "switch",
+            "key": "set_data_limit",
+            "title": "设置数据流量上限",
+            "defaultValue": "false"
+          },
+          { "type": "value", "key": "data_limit_level", "title": "数据流量上限" }
+        ]
+      },
+      {
+        "items": [
+          {
+            "type": "footer",
+            "key": "billing_cycle_footer",
+            "title": "",
+            "summary": "您的设备会自行衡量数据流量警告和数据流量上限。结果可能与运营商的计算结果不同。"
+          }
+        ]
+      }
+    ]
+  },
+  "network_selection": {
+    "id": "network_selection",
+    "title": "网络选择",
+    "categories": [
+      {
+        "items": [
+          {
+            "type": "list",
+            "key": "network_select_mode",
+            "title": "选择模式",
+            "defaultValue": "auto",
+            "options": [
+              { "label": "自动选择", "value": "auto" },
+              { "label": "手动选择", "value": "manual" }
+            ]
+          },
+          {
+            "type": "list",
+            "key": "preferred_network_mode_key",
+            "title": "首选网络类型",
+            "defaultValue": "27",
+            "options": [
+              { "label": "5G/4G/3G/2G（自动）", "value": "27" },
+              { "label": "4G/3G/2G（自动）", "value": "20" },
+              { "label": "仅 3G", "value": "2" },
+              { "label": "仅 2G", "value": "1" }
+            ]
+          }
+        ]
+      },
+      {
+        "title": "可用网络",
+        "items": [
+          { "type": "preference", "key": "available_network_1", "title": "中国移动 5G", "summary": "信号强 / 5G" },
+          { "type": "preference", "key": "available_network_2", "title": "中国联通 4G", "summary": "信号中 / 4G" },
+          { "type": "preference", "key": "available_network_3", "title": "中国电信 4G", "summary": "信号弱 / 4G" }
+        ]
+      }
+    ]
+  },
+  "convert_to_esim": {
+    "id": "convert_to_esim",
+    "title": "转换为 eSIM",
+    "categories": [
+      {
+        "items": [
+          {
+            "type": "preference",
+            "key": "convert_esim_action",
+            "title": "将物理 SIM 卡转换为 eSIM",
+            "summary": "转换后，物理 SIM 卡将停用，eSIM 将激活相同号码"
+          }
+        ]
+      },
+      {
+        "items": [
+          {
+            "type": "footer",
+            "key": "convert_esim_note",
+            "title": "",
+            "summary": "确保您的运营商支持 eSIM 服务，且手机已连接网络。转换过程可能需要几分钟。"
+          }
+        ]
+      }
+    ]
+  },
+  "transfer_esim": {
+    "id": "transfer_esim",
+    "title": "将 eSIM 卡转移到其他设备上",
+    "categories": [
+      {
+        "items": [
+          {
+            "type": "preference",
+            "key": "transfer_esim_action",
+            "title": "开始转移",
+            "summary": "按照屏幕上的说明将 eSIM 配置转移到新设备"
+          }
+        ]
+      },
+      {
+        "items": [
+          {
+            "type": "footer",
+            "key": "transfer_esim_note",
+            "title": "",
+            "summary": "确保两台设备均已开启蓝牙，且新设备支持 eSIM。转移过程中请保持设备靠近。"
           }
         ]
       }

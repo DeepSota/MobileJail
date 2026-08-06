@@ -87,6 +87,21 @@ const DependentSwitch: React.FC<{
   return <SwitchPreference {...props} disabled={dependency ? !depMet : false} />;
 };
 
+/** List preference that is disabled when its dependency preference is false */
+const ListWithDependency: React.FC<{
+  dependencyKey?: string;
+  title: string;
+  summary?: string;
+  options?: Array<{ label: string; value: string }>;
+  defaultValue?: string;
+  settingKey: string;
+  showDivider?: boolean;
+  onMissingOptions?: () => void;
+}> = ({ dependencyKey, ...props }) => {
+  const [depMet] = usePreferenceValue<boolean>(dependencyKey || '', false);
+  return <ListPreference {...props} disabled={dependencyKey ? !depMet : false} />;
+};
+
 function formatValue(v: any, s: { on: string; off: string }): string | undefined {
   if (v === undefined || v === null) return undefined;
   if (typeof v === 'boolean') return v ? s.on : s.off;
@@ -478,8 +493,9 @@ export const PreferenceScreenPage: React.FC = () => {
         );
       case 'list': {
         return (
-          <ListPreference
+          <ListWithDependency
             key={item.key || idx}
+            dependencyKey={item.dependency}
             title={tTitle}
             summary={tSummary}
             options={item.options?.map(o => ({ ...o, label: t(o.label) }))}

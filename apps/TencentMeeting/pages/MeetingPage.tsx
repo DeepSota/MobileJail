@@ -477,14 +477,18 @@ export const MeetingPage: React.FC = () => {
                              {/* Input Row */}
                              <div className="flex items-center gap-2 px-1" data-keep-keyboard="true">
                                  <IcSubtitles size={20} className="text-gray-400 shrink-0 self-end mb-2" />
-                                 <div className="flex-1 bg-app-surface border border-app-border rounded-lg px-3 py-1.5 min-h-[34px] flex items-center">
+                                 <div className="flex-1 bg-app-surface border border-app-border rounded-lg px-3 py-1.5 min-h-[34px] flex items-end">
                                      <textarea
                                         ref={chatTextareaRef}
                                         rows={1}
                                         placeholder={s.meeting_input_placeholder}
-                                        className="w-full bg-transparent text-black text-sm focus:outline-none placeholder-gray-400 resize-none leading-[18px]"
+                                        className="w-full bg-transparent text-black text-sm focus:outline-none placeholder-gray-400 resize-none leading-[18px] overflow-hidden max-h-[120px]"
                                         value={chatMessage}
-                                        onChange={(e) => setChatMessage(e.target.value)}
+                                        onChange={(e) => {
+                                            setChatMessage(e.target.value);
+                                            e.target.style.height = 'auto';
+                                            e.target.style.height = e.target.scrollHeight + 'px';
+                                        }}
                                         onKeyDown={(e) => {
                                             if (e.key === 'Enter') {
                                                 // 防止外层键盘/手势逻辑把 Enter 当成其他行为处理

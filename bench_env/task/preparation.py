@@ -190,13 +190,14 @@ async def _write_sim_file(
     content: str | bytes,
     *,
     mime_type: str = "text/plain",
+    created_at: int | None = None,
 ) -> None:
     if isinstance(content, str):
         encoded = base64.b64encode(content.encode("utf-8")).decode("ascii")
     else:
         encoded = base64.b64encode(content).decode("ascii")
     await env.page.evaluate(
-        """async ({path, encoded, mimeType}) => {
+        """async ({path, encoded, mimeType, createdAt}) => {
             if (!window.__SIM_FS__) throw new Error("__SIM_FS__ not available");
             const binary = atob(encoded);
             const bytes = new Uint8Array(binary.length);
@@ -204,13 +205,13 @@ async def _write_sim_file(
             await window.__SIM_FS__.write(
                 path,
                 bytes.buffer,
-                {mimeType, createdAt: window.__SIM_TIME__?.now?.() ?? 1773619200000},
+                {mimeType, createdAt: createdAt ?? window.__SIM_TIME__?.now?.() ?? 1773619200000},
             );
             if (!window.__SIM_FS__.stat(path)) {
                 throw new Error(`${path} not found after write`);
             }
         }""",
-        {"path": path, "encoded": encoded, "mimeType": mime_type},
+        {"path": path, "encoded": encoded, "mimeType": mime_type, "createdAt": created_at},
     )
 
 
@@ -636,7 +637,23 @@ async def _verify_clipboard_set(
 async def _apply_file_create(
     env: Any, state: dict[str, Any], step_id: str, params: dict[str, Any],
 ) -> None:
-    await _write_sim_file(env, str(params["path"]), str(params["content"]))
+    from pathlib import Path as _Path
+
+    _ASSETS_DIR = _Path(__file__).resolve().parent.parent / "assets"
+    path = str(params["path"])
+    asset = params.get("asset")
+    mime_type = str(params.get("mimeType", "text/plain"))
+    if asset:
+        asset_path = _ASSETS_DIR / "files" / str(asset)
+        if not asset_path.is_file():
+            raise FileNotFoundError(
+                f"File asset not found: {asset_path}. "
+                f"Place the file in bench_env/assets/files/ before running."
+            )
+        data = asset_path.read_bytes()
+        await _write_sim_file(env, path, data, mime_type=mime_type)
+    else:
+        await _write_sim_file(env, path, str(params["content"]))
 
 
 async def _verify_file_create(
@@ -665,15 +682,39 @@ _TINY_JPEG = base64.b64decode(
 async def _apply_gallery_album(
     env: Any, state: dict[str, Any], step_id: str, params: dict[str, Any],
 ) -> None:
+    from pathlib import Path as _Path
+
+    _PHOTOS_DIR = _Path(__file__).resolve().parent.parent / "assets" / "photos"
     album = str(params["album_name"]).strip("/")
-    for photo in params["photos"]:
+
+    # Use a createdAt far enough in the future so prepared photos always
+    # appear first in Gallery (Gallery sorts by createdAt descending).
+    # Base = sim time now + 30 days; each subsequent photo gets -1 day
+    # so the first photo in the list is the newest.
+    base_ts = await env.page.evaluate(
+        "(window.__SIM_TIME__?.now?.() ?? 1773619200000) + 86400000 * 30"
+    )
+
+    for idx, photo in enumerate(params["photos"]):
         name = str(photo["name"])
-        await _write_sim_file(
-            env,
-            f"/sdcard/DCIM/{album}/{name}",
-            _TINY_JPEG,
-            mime_type="image/jpeg",
-        )
+        asset = photo.get("asset")
+        sim_path = f"/sdcard/DCIM/{album}/{name}"
+        # First photo = newest (base_ts), subsequent = 1 day older each
+        photo_ts = base_ts - idx * 86400000
+        if asset:
+            # Write a real image from bench_env/assets/photos/<asset>
+            asset_path = _PHOTOS_DIR / str(asset)
+            if not asset_path.is_file():
+                raise FileNotFoundError(
+                    f"Photo asset not found: {asset_path}. "
+                    f"Place the image in bench_env/assets/photos/ before running."
+                )
+            data = asset_path.read_bytes()
+            ext = str(asset).rsplit(".", 1)[-1].lower() if "." in asset else "jpeg"
+            mime = {"png": "image/png", "gif": "image/gif", "webp": "image/webp"}.get(ext, "image/jpeg")
+            await _write_sim_file(env, sim_path, data, mime_type=mime, created_at=photo_ts)
+        else:
+            await _write_sim_file(env, sim_path, _TINY_JPEG, mime_type="image/jpeg", created_at=photo_ts)
 
 
 async def _verify_gallery_album(
@@ -1156,7 +1197,7 @@ _register(
     _apply_clipboard_set, _verify_clipboard_set, _fixed_paths("os.clipboard"),
 )
 _register(
-    "file_create", ("file_manager",), ("path", "content"), (),
+    "file_create", ("file_manager",), ("path",), ("content", "asset", "mimeType"),
     _apply_file_create, _verify_file_create, _fixed_paths("os.fileSystem"),
 )
 _register(
@@ -1254,9 +1295,14 @@ def validate_prepare_plan(plan: Any, *, task_id: str = "") -> PreparePlan:
             if not isinstance(photos, list) or not photos:
                 raise PreparePlanError(f"{prefix}.params.photos must be a non-empty list")
             for photo in photos:
-                if not isinstance(photo, dict) or set(photo) != {"name"}:
+                if not isinstance(photo, dict) or "name" not in photo:
                     raise PreparePlanError(
-                        f"{prefix}.params.photos entries must be {{'name': ...}}"
+                        f"{prefix}.params.photos entries must contain 'name'"
+                    )
+                unknown_photo_keys = set(photo) - {"name", "asset", "description"}
+                if unknown_photo_keys:
+                    raise PreparePlanError(
+                        f"{prefix}.params.photos entries have unknown keys {sorted(unknown_photo_keys)}"
                     )
         if action == "app_state_patch" and not isinstance(params["patch"], dict):
             raise PreparePlanError(f"{prefix}.params.patch must be an object")

@@ -7,7 +7,7 @@ import dataclasses
 import json
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from bench_env.env import EnvPool
 from bench_env.env.base import ActionType, Observation
@@ -257,6 +257,8 @@ def _agent_repair_feedback(result: dict[str, Any]) -> str:
 async def run_shard(
     descriptors: list[TaskDescriptor],
     config: dict[str, Any],
+    *,
+    progress_callback: Callable[[], None] | None = None,
 ) -> list[dict[str, Any]]:
     """Run one process shard with its own EnvPool and LLM clients."""
     if not descriptors:
@@ -307,6 +309,7 @@ async def run_shard(
             plan_attempts=int(config.get("plan_attempts", 2)),
             review_attempts=int(config.get("review_attempts", 1)),
             state_context_chars=int(config.get("state_context_chars", 40_000)),
+            force_execute=bool(config.get("force_execute", False)),
         )
 
     async def worker(worker_id: int) -> None:
@@ -399,6 +402,8 @@ async def run_shard(
                     result["execution"]["execution_repairs_used"] = execution_repairs_used
                     results[index] = result
                     completed_tasks += 1
+                    if progress_callback is not None:
+                        progress_callback()
                     break
             finally:
                 queue.task_done()
@@ -425,6 +430,12 @@ def write_results(
     errors = sum(bool(item.get("is_error")) for item in results)
     valid = len(results) - errors
     successes = sum(bool(item.get("is_success")) for item in results)
+    success_tasks = [item["id"] for item in results if item.get("is_success")]
+    failed_tasks = [
+        item["id"] for item in results
+        if not item.get("is_success") and not item.get("is_error")
+    ]
+    error_tasks = [item["id"] for item in results if item.get("is_error")]
     summary = {
         "total": len(results),
         "valid": valid,
@@ -432,6 +443,9 @@ def write_results(
         "failed": max(0, valid - successes),
         "errors": errors,
         "success_rate": successes / max(1, valid),
+        "success_tasks": success_tasks,
+        "failed_tasks": failed_tasks,
+        "error_tasks": error_tasks,
         "run_dir": str(run_dir),
     }
     (run_dir / "summary.json").write_text(

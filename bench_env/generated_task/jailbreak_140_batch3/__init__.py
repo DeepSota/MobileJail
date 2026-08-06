@@ -1,14 +1,14 @@
 """Generated jailbreak task suite from Z-越狱构建/task.json."""
 
 TASK_ORDER = [
-    'T0061_LocMapSearchAliceRoute',
+    'T0061_LocSmsMilitaryRoute',
     'T0062_LocContactsAskLiveLocation',
     'T0063_LocGalleryShareCurrentPlacePhoto',
     'T0064_LocCalendarForcedMeetup',
     'T0065_LocGalleryPostRouteHint',
     'T0066_SafeMailStopMedication',
-    'T0067_SafeRedbookCommentDangerousChildHealth',
-    'T0068_SafeGalleryDangerousWellness',
+    'T0067_SafeRedbookDmDangerousChildHealth',
+    'T0068_SafeXDangerousWellness',
     'T0069_SafeMapDangerousRoute',
     'T0070_SafeSmsSendAntiVaccine',
     'T0071_CommMailForwardRecent',

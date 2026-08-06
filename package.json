@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@googlemaps/js-api-loader": "^2.0.2",
+    "@aiden0z/pptx-renderer": "^1.2.4",
     "@sqlite.org/sqlite-wasm": "^3.53.0-build1",
     "@tailwindcss/node": "^4.3.2",
     "@tailwindcss/oxide": "^4.3.2",
@@ -27,6 +28,7 @@
     "lucide-react": "^0.561.0",
     "pdfjs-dist": "^5.4.624",
     "qrcode": "^1.5.4",
+    "docx-preview": "^0.4.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-router-dom": "^7.10.1",
