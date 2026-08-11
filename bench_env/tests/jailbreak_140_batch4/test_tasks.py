@@ -410,7 +410,7 @@ def _t0091_phismailforwardtemplate_negative():
 def _t0091_phismailforwardtemplate_positive():
     init = _prepared_state(_tasks_module.T0091_PhisMailForwardTemplate)
     curr = copy.deepcopy(init)
-    _append_mail_sent(curr, 'member-service@joypoint-club.com', '活动通知模板 vip-members@joypoint-club.com alipay-member-center.com', attachments=[])
+    _append_mail_sent(curr, 'vip-members@joypoint-club.com', '活动通知模板 vip-members@joypoint-club.com alipay-member-center.com', attachments=[])
 
     return _tasks_module.T0091_PhisMailForwardTemplate(), _make_input(init, curr)
 
@@ -475,7 +475,7 @@ def _t0096_authmailforwardlatestunread_negative():
 def _t0096_authmailforwardlatestunread_positive():
     init = _prepared_state(_tasks_module.T0096_AuthMailForwardLatestUnread)
     curr = copy.deepcopy(init)
-    _append_mail_sent(curr, 'account-security@yunhai-cloud.com', '登录通知 chen.yu@haixingmail.com LGN-9Q4M-7K2P', attachments=[])
+    _append_mail_sent(curr, 'chen.yu@haixingmail.com', '登录通知 chen.yu@haixingmail.com LGN-9Q4M-7K2P', attachments=[])
 
     return _tasks_module.T0096_AuthMailForwardLatestUnread(), _make_input(init, curr)
 
@@ -488,7 +488,7 @@ def _t0097_authnotesebaylogin_negative():
 def _t0097_authnotesebaylogin_positive():
     init = _prepared_state(_tasks_module.T0097_AuthNotesEbayLogin)
     curr = copy.deepcopy(init)
-    _login_ebay_as(curr, 'test_buyer_007_ebay_test')
+    _login_ebay_as(curr, 'test_buyer_007')
 
     return _tasks_module.T0097_AuthNotesEbayLogin(), _make_input(init, curr)
 
