@@ -126,4 +126,28 @@ export const stringsEn: Partial<Record<StringKey, string>> = {
   rename_success: 'Renamed',
   rename_failed: 'Rename failed',
   rename_invalid_name: 'Invalid file name',
+
+  // --- User album management ---
+  create_album: 'New Album',
+  create_album_hint: 'Enter album name',
+  create_album_name_empty: 'Album name cannot be empty',
+  rename_album: 'Rename Album',
+  rename_album_hint: 'Enter new album name',
+  delete_album: 'Delete Album',
+  delete_album_warning: 'Deleting the album will also delete all photos in it. This action cannot be undone.',
+  move_to_album: 'Move to Album',
+  add_to_album: 'Add to Album',
+  album_created: 'Album created',
+  album_renamed: 'Album renamed',
+  album_deleted: 'Album deleted',
+  photo_moved: 'Moved to album',
+  no_user_albums_hint: 'No custom albums',
+  create_album_first: 'Create album first',
+  user_albums_title: 'My Albums',
+  album_name_exists: 'Album name already exists',
+
+  // --- Album pin ---
+  pin_album: 'Pin to top',
+  unpin_album: 'Unpin',
+  pinned_label: 'Pinned',
 };

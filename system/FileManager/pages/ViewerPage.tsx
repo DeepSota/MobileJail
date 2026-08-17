@@ -19,6 +19,8 @@ import { PdfDocumentView } from '../viewer/PdfDocumentView';
 import { TextDocumentView } from '../viewer/TextDocumentView';
 import { SpreadsheetView } from '../viewer/SpreadsheetView';
 import { OfficeDocumentView } from '../viewer/OfficeDocumentView';
+import { DocxDocumentView } from '../viewer/DocxDocumentView';
+import { PptxDocumentView } from '../viewer/PptxDocumentView';
 import { shareNodesAsFiles } from '../utils/fileOperations';
 import { validateViewerSourceSize } from '../viewer/viewerValidation';
 import type { DocumentViewerState, ViewerStateReporter } from '../viewer/viewerState';
@@ -231,6 +233,7 @@ export const ViewerPage: React.FC = () => {
       return (
         <TextDocumentView
           blob={currentBlobState.blob}
+          path={path}
           zoomPercent={zoomPercent}
           searchQuery={query}
           showLineNumbers
@@ -248,6 +251,32 @@ export const ViewerPage: React.FC = () => {
           searchQuery={query}
           requestedSheet={requestedSheet}
           requestedCell={requestedCell}
+          onStateChange={reportRendererState}
+        />
+      );
+    }
+    if (format.adapter === 'word') {
+      return (
+        <DocxDocumentView
+          blob={currentBlobState.blob}
+          format={format}
+          zoomPercent={zoomPercent}
+          targetPage={targetPage}
+          searchQuery={query}
+          showThumbnails={panel === 'thumbnails'}
+          onStateChange={reportRendererState}
+        />
+      );
+    }
+    if (format.adapter === 'presentation') {
+      return (
+        <PptxDocumentView
+          blob={currentBlobState.blob}
+          format={format}
+          zoomPercent={zoomPercent}
+          targetPage={targetPage}
+          searchQuery={query}
+          showThumbnails={panel === 'thumbnails'}
           onStateChange={reportRendererState}
         />
       );

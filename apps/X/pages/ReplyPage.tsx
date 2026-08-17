@@ -10,6 +10,13 @@ import * as MediaService from '@/os/MediaService';
 
 const MAX_IMAGES = 4;
 
+const resizeReplyTextarea = (element: HTMLTextAreaElement) => {
+  element.style.height = 'auto';
+  const nextHeight = Math.min(element.scrollHeight, 240);
+  element.style.height = `${nextHeight}px`;
+  element.style.overflowY = element.scrollHeight > 240 ? 'auto' : 'hidden';
+};
+
 export const ReplyPage: React.FC = () => {
   const { id } = useParams();
   const user = useXStore(selectUser);
@@ -35,9 +42,14 @@ export const ReplyPage: React.FC = () => {
   }, [id, importedReplies, localPosts, original]);
 
   const [content, setContent] = React.useState('');
+  const inputRef = React.useRef<HTMLTextAreaElement>(null);
   const [selectedImages, setSelectedImages] = React.useState<string[]>([]);
   const [pickingImage, setPickingImage] = React.useState(false);
   const trimmed = content.trim();
+
+  React.useEffect(() => {
+    if (inputRef.current) resizeReplyTextarea(inputRef.current);
+  }, [content]);
 
   const handlePickImage = async () => {
     if (pickingImage) return;
@@ -151,10 +163,16 @@ export const ReplyPage: React.FC = () => {
             </div>
             <div className="flex-1">
               <textarea
-                className="w-full bg-transparent outline-none resize-none text-app-text placeholder-gray-500 min-h-[140px]"
+                ref={inputRef}
+                rows={1}
+                className="block w-full min-h-[140px] max-h-[240px] bg-transparent outline-none resize-none overflow-y-hidden text-app-text placeholder-gray-500 leading-5"
                 placeholder={s.reply_placeholder}
                 value={content}
-                onChange={event => setContent(event.target.value)}
+                onChange={event => {
+                  setContent(event.target.value);
+                  resizeReplyTextarea(event.currentTarget);
+                }}
+                onInput={event => resizeReplyTextarea(event.currentTarget)}
                 data-action="reply.content.input"
                 data-action-type="input"
                 data-action-params={JSON.stringify({ value: content })}

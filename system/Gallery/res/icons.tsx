@@ -11,6 +11,7 @@ import {
   FileText,
   FileType,
   Film,
+  FolderPlus,
   Heart,
   Image,
   Info,
@@ -62,6 +63,7 @@ export const IcHeart = Heart;
 // ── Gallery specific ──────────────────────────────────────
 export const IcGrid = LayoutGrid;
 export const IcAddPhoto = PlusSquare;
+export const IcFolderPlus = FolderPlus;
 export const IcSparkles = Sparkles;
 export const IcScissors = Scissors;
 export const IcFile = FileText;
@@ -103,6 +105,7 @@ export const ICON_REGISTRY: Record<string, any> = {
   IcHeart,
   IcGrid,
   IcAddPhoto,
+  IcFolderPlus,
   IcSparkles,
   IcScissors,
   IcFile,

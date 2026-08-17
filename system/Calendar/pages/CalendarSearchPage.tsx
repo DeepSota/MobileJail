@@ -1,5 +1,5 @@
 import React from 'react';
-import { useCalendarStore } from '../state';
+import { useCalendarStore, selectVisibleEvents } from '../state';
 import { MaskIcon } from '../components/MaskIcon';
 import { strings } from '../res/strings';
 import { stringsEn } from '../res/strings.en';
@@ -21,7 +21,7 @@ const formatDateTimeCN = (ts: number, allDay: boolean, allDayLabel: string) => {
 
 export const CalendarSearchPage: React.FC = () => {
   const { bindBack, bindTap } = useCalendarGestures();
-  const events = useCalendarStore(s => s.events);
+  const events = useCalendarStore(selectVisibleEvents);
   const s = useAppStrings(strings, stringsEn);
 
   const [q, setQ] = React.useState('');

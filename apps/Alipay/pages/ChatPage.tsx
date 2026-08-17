@@ -242,9 +242,9 @@ export const ChatPage: React.FC = () => {
   };
 
   return (
-    <div className="relative bg-app-bg h-full flex flex-col">
+    <div className="relative bg-app-bg h-full flex flex-col min-h-0 overflow-hidden">
       {/* Header */}
-      <div className="bg-app-bg px-4 pt-12 pb-3 border-b border-app-border sticky top-0 z-10">
+      <div className="bg-app-bg px-4 pt-12 pb-3 border-b border-app-border z-10">
         <div className="flex items-center justify-between">
           <div className="flex items-center">
             <button {...bindBack<HTMLButtonElement>()} className="mr-2">

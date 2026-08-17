@@ -11,6 +11,8 @@ export type FileViewerKind =
 export type FileViewerAdapter =
   | 'pdf'
   | 'text'
+  | 'word'
+  | 'presentation'
   | 'office-page'
   | 'spreadsheet'
   | 'none';
@@ -107,7 +109,7 @@ export const FILE_FORMAT_REGISTRY: Readonly<Record<string, FileFormatDescriptor>
     extension: 'doc',
     mime: 'application/msword',
     mimeTypes: ['application/msword'],
-    adapter: 'office-page',
+    adapter: 'word',
     signature: 'ole',
     supported: true,
     colorLabel: '#2b579a',
@@ -119,7 +121,7 @@ export const FILE_FORMAT_REGISTRY: Readonly<Record<string, FileFormatDescriptor>
     extension: 'docx',
     mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     mimeTypes: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
-    adapter: 'office-page',
+    adapter: 'word',
     signature: 'zip',
     supported: true,
     colorLabel: '#2b579a',
@@ -155,7 +157,7 @@ export const FILE_FORMAT_REGISTRY: Readonly<Record<string, FileFormatDescriptor>
     extension: 'ppt',
     mime: 'application/vnd.ms-powerpoint',
     mimeTypes: ['application/vnd.ms-powerpoint'],
-    adapter: 'office-page',
+    adapter: 'presentation',
     signature: 'ole',
     supported: true,
     colorLabel: '#d24726',
@@ -167,7 +169,7 @@ export const FILE_FORMAT_REGISTRY: Readonly<Record<string, FileFormatDescriptor>
     extension: 'pptx',
     mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     mimeTypes: ['application/vnd.openxmlformats-officedocument.presentationml.presentation'],
-    adapter: 'office-page',
+    adapter: 'presentation',
     signature: 'zip',
     supported: true,
     colorLabel: '#d24726',

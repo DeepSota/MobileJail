@@ -4,7 +4,7 @@ import { IcNavForward, IcCalendarDays, IcCake, IcBookmark, IcTimer } from '../re
 import { MaskIcon } from '../components/MaskIcon';
 import { Toast } from '@/os/components/Toast';
 import { CalendarActionSheet } from '../components/CalendarActionSheet';
-import { useCalendarStore, selectSelectedDate } from '../state';
+import { useCalendarStore, selectSelectedDate, selectVisibleEvents } from '../state';
 import { useShallow } from 'zustand/react/shallow';
 import type { CalendarEventType } from '../types';
 import { strings } from '../res/strings';
@@ -18,13 +18,13 @@ export const CalendarNewEventPage: React.FC = () => {
     const { back, go, bindBack } = useCalendarGestures();
     const { eventId } = useParams();
     const selectedDate = useCalendarStore(selectSelectedDate);
-    const { settings, createEvent, setSelectedDate, updateEvent, events } = useCalendarStore(
+    const events = useCalendarStore(selectVisibleEvents);
+    const { settings, createEvent, setSelectedDate, updateEvent } = useCalendarStore(
       useShallow(s => ({
         settings: s.settings,
         createEvent: s.createEvent,
         setSelectedDate: s.setSelectedDate,
         updateEvent: s.updateEvent,
-        events: s.events,
       })),
     );
     const s = useAppStrings(strings, stringsEn);

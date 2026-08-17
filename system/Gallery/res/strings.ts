@@ -127,6 +127,30 @@ export const strings = {
   rename_success: '重命名成功',
   rename_failed: '重命名失败',
   rename_invalid_name: '文件名不合法',
+
+  // --- User album management ---
+  create_album: '新建相册',
+  create_album_hint: '请输入相册名称',
+  create_album_name_empty: '相册名称不能为空',
+  rename_album: '重命名相册',
+  rename_album_hint: '请输入新相册名称',
+  delete_album: '删除相册',
+  delete_album_warning: '删除相册将同时删除其中的所有照片，此操作无法撤销。',
+  move_to_album: '移动到相册',
+  add_to_album: '添加到相册',
+  album_created: '相册已创建',
+  album_renamed: '相册已重命名',
+  album_deleted: '相册已删除',
+  photo_moved: '已移动到相册',
+  no_user_albums_hint: '暂无自建相册',
+  create_album_first: '先新建相册',
+  user_albums_title: '我的相册',
+  album_name_exists: '相册名称已存在',
+
+  // --- Album pin ---
+  pin_album: '置顶',
+  unpin_album: '取消置顶',
+  pinned_label: '已置顶',
 } as const;
 
 export type StringKey = keyof typeof strings;

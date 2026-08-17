@@ -21,7 +21,6 @@ const DYNAMIC_SUMMARY_KEYS: Record<string, string> = {
  *  Keep this small: only for external-intent entries and hand-written stubs. */
 const PAGE_OVERRIDES: Record<string, string> = {
   // External intents (no fragment in headers, but we have useful internal XML screens)
-  msim_settings: 'mobile_network_pref_screen',
   interconnection_settings: 'connected_devices_screen',
   privacy_protection_settings: 'security_privacy_settings',
   battery_settings_new: 'battery_settings',

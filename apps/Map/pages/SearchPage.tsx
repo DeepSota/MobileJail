@@ -129,8 +129,8 @@ export const SearchPage: React.FC = () => {
   }, [searchLoadingMore, searchHasMore]);
 
   const placeResultsSheetKey = useMemo(
-    () => (hasSubmitted ? `${sheetSort}-${sheetFilters.join(',')}-${allSearchItems.length}` : 'idle'),
-    [hasSubmitted, sheetSort, sheetFilters, allSearchItems.length],
+    () => (hasSubmitted ? `${sheetSort}-${allSearchItems.length}` : 'idle'),
+    [hasSubmitted, sheetSort, allSearchItems.length],
   );
 
   const handlePlaceResultsSortChange = useCallback(

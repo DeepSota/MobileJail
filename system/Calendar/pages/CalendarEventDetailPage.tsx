@@ -1,7 +1,7 @@
 import React from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { MaskIcon } from '../components/MaskIcon';
-import { useCalendarStore } from '../state';
+import { useCalendarStore, selectVisibleEvents } from '../state';
 import { strings } from '../res/strings';
 import { stringsEn } from '../res/strings.en';
 import { useAppStrings } from '@/os/useAppStrings';
@@ -28,7 +28,7 @@ export const CalendarEventDetailPage: React.FC = () => {
   const { eventId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const showDeleteConfirm = searchParams.get('deleteConfirm') === 'open';
-  const calendarEvents = useCalendarStore(s => s.events);
+  const calendarEvents = useCalendarStore(selectVisibleEvents);
   const deleteEvent = useCalendarStore(s => s.deleteEvent);
   const s = useAppStrings(strings, stringsEn);
 

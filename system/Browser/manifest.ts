@@ -29,6 +29,7 @@ export const manifest: AppManifest = {
   },
   permissions: [
     PERMISSIONS.ACCESS_FINE_LOCATION,
+    PERMISSIONS.ACCESS_COARSE_LOCATION,
     PERMISSIONS.CAMERA,
   ],
   intentFilters: [

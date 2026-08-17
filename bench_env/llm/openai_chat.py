@@ -6,6 +6,7 @@ Supports any OpenAI API-compatible endpoint (OpenAI, Azure, vLLM, Ollama, etc.)
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
@@ -15,6 +16,86 @@ from typing import Any, Optional
 import openai
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_concatenated_chunks(body: str) -> list[dict[str, Any]]:
+    """Parse a response body with multiple JSON objects concatenated together.
+
+    ModelScope's API returns streaming chunks concatenated in a single HTTP
+    response body without SSE framing, like:  {...}{...}{...}
+    This function splits them by tracking brace depth.
+    """
+    chunks: list[dict[str, Any]] = []
+    depth = 0
+    start = -1
+    for i, ch in enumerate(body):
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0 and start >= 0:
+                raw = body[start : i + 1]
+                start = -1
+                try:
+                    chunks.append(json.loads(raw))
+                except json.JSONDecodeError:
+                    pass  # skip malformed
+    return chunks
+
+
+def _merge_stream_chunks(chunks: list[dict[str, Any]]) -> dict[str, Any]:
+    """Merge concatenated stream chunks into a single non-stream response.
+
+    Each chunk uses ``choices[0].delta`` (stream format).  We merge the
+    delta content fields in order, then produce a single response with
+    ``choices[0].message.content``.
+    """
+    if not chunks:
+        return {"choices": [{"message": {"content": ""}}]}
+
+    # Take structure from the last chunk (has usage / finish_reason etc.)
+    merged = dict(chunks[-1])
+    merged["object"] = "chat.completion"
+
+    # Collect all delta content
+    all_content_parts: list[str] = []
+    all_reasoning_parts: list[str] = []
+    finish_reason = None
+
+    for chunk in chunks:
+        choices = chunk.get("choices") or []
+        if not choices:
+            continue
+        delta = choices[0].get("delta") or {}
+        content = delta.get("content") or ""
+        if content:
+            all_content_parts.append(content)
+        reasoning = delta.get("reasoning_content") or delta.get("reasoning") or ""
+        if reasoning:
+            all_reasoning_parts.append(reasoning)
+        fr = choices[0].get("finish_reason")
+        if fr:
+            finish_reason = fr
+
+    merged_content = "".join(all_content_parts)
+    merged_reasoning = "".join(all_reasoning_parts) or None
+
+    merged["choices"] = [
+        {
+            "index": 0,
+            "finish_reason": finish_reason or "stop",
+            "message": {
+                "role": "assistant",
+                "content": merged_content,
+            },
+        }
+    ]
+    if merged_reasoning:
+        merged["choices"][0]["message"]["reasoning_content"] = merged_reasoning
+
+    return merged
 
 
 @dataclass
@@ -228,6 +309,7 @@ class LLMClient:
         # Non-streaming (with retry for transient infrastructure errors)
         max_retries = 5
         req_start = start
+        raw = None
         for attempt in range(1, max_retries + 1):
             try:
                 req_start = time.time()
@@ -257,6 +339,42 @@ class LLMClient:
                     time.sleep(0.5 * attempt)
                 else:
                     raise
+            except (json.JSONDecodeError, ValueError) as e:
+                # Some endpoints (e.g. ModelScope) return concatenated stream
+                # chunks in a single response — the OpenAI client can't parse
+                # them.  Fall through to the httpx fallback below.
+                logger.warning("[LLM] JSON parse failed (attempt %d/%d): %s — falling back to raw httpx", attempt, max_retries, e)
+                import httpx
+                try:
+                    hreq_start = time.time()
+                    hclient = httpx.Client(timeout=self.timeout_s)
+                    hresp = hclient.post(
+                        f"{self.base_url}/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {self.api_key}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": self.model,
+                            "messages": messages,
+                            **payload_args,
+                        },
+                    )
+                    hreq_end = time.time()
+                    latency = hreq_end - hreq_start
+                    body = hresp.text
+                    chunks = _parse_concatenated_chunks(body)
+                    if chunks:
+                        merged = _merge_stream_chunks(chunks)
+                        content, reasoning = _extract_content_and_reasoning(merged)
+                        if reasoning:
+                            content = _merge_reasoning_into_content(content, reasoning)
+                            reasoning = None
+                        return ChatResult(content=content, reasoning=reasoning, latency_s=latency, raw=merged)
+                except Exception as httpx_err:
+                    logger.warning("[LLM] httpx fallback also failed: %s", httpx_err)
+                # If httpx fallback also fails, re-raise original
+                raise
         latency = time.time() - req_start
         
         # Handle different response formats

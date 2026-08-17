@@ -165,6 +165,11 @@ class BaseTask(ABC):
     # Expected state changes (for side-effect detection)
     expected_changes: ClassVar[list[str]] = []
 
+    # Declarative prerequisite state actions. Generated task suites should use
+    # this shared protocol instead of implementing one bespoke _prepare()
+    # method per task.
+    prepare_plan: ClassVar[list[dict[str, Any]] | None] = None
+
     # Task parameters schema (optional)
     # 
     # Schema fields:
@@ -581,6 +586,15 @@ class BaseTask(ABC):
         
         # 3. Prepare environment (subclass hook, runs BEFORE sampling)
         with sw.phase("prepare"):
+            if self.prepare_plan is not None:
+                from bench_env.task.preparation import execute_prepare_plan
+
+                self.prepare_report = await execute_prepare_plan(
+                    env,
+                    self.prepare_plan,
+                    task_id=self.name,
+                    required_apps=self.apps or None,
+                )
             await self._prepare(env)
         
         # Skip both sampling and _post_sample when either:

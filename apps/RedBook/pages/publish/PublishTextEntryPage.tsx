@@ -100,7 +100,10 @@ export const PublishTextEntryPage: React.FC = () => {
         )}
 
         {!isEditing && (
-          <div className="mt-6 bg-app-surface rounded-[16px] flex items-center justify-between px-6 py-4 shadow-[0_6px_20px_rgba(0,0,0,0.04)]">
+          <div
+            className="mt-6 bg-app-surface rounded-[16px] flex items-center justify-between px-6 py-4 shadow-[0_6px_20px_rgba(0,0,0,0.04)]"
+            {...bindTap('publish.long_article.open')}
+          >
             <div>
               <div className="text-[18px] font-medium text-app-text">{s.write_long_post}</div>
               <div className="text-[12px] text-[#aaa] mt-1">{s.supports_10k_and_words_full_screen_reading}</div>

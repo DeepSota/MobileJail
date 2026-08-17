@@ -16,6 +16,7 @@ import { PublishTextEntryPage } from './pages/publish/PublishTextEntryPage';
 import { PublishTextTemplatePage } from './pages/publish/PublishTextTemplatePage';
 import { PublishTextFinalPage } from './pages/publish/PublishTextFinalPage';
 import { PublishPhotoFinalPage } from './pages/publish/PublishPhotoFinalPage';
+import { PublishLongArticlePage } from './pages/publish/PublishLongArticlePage';
 import { SearchPage } from './pages/SearchPage';
 import { ChatPage } from './pages/ChatPage';
 import { ChatSettingsPage } from './pages/ChatSettingsPage';
@@ -97,6 +98,7 @@ export const RedBookApp: React.FC = () => {
             <Route path="publish/text" element={<PublishTextEntryPage />} />
             <Route path="publish/text/template" element={<PublishTextTemplatePage />} />
             <Route path="publish/text/final" element={<PublishTextFinalPage />} />
+            <Route path="publish/long-article" element={<PublishLongArticlePage />} />
             <Route path="publish/photo/final" element={<PublishPhotoFinalPage />} />
             <Route path="search" element={<SearchPage />} />
             <Route path="chat/:userId" element={<ChatPage />} />

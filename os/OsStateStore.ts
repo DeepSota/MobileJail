@@ -148,6 +148,8 @@ export interface OsHardwareState {
 export interface OsTelephonyState {
   sims: SimInfoPreset[];
   defaultDataSim: 1 | 2;
+  defaultCallsSim: 1 | 2 | 0; // 0 = 每次询问
+  defaultSmsSim: 1 | 2 | 0;
 }
 
 export interface OsState {

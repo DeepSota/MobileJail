@@ -214,6 +214,19 @@
     53584,
     62034,
     54560
+  ],
+  "events": [
+    {
+      "id": "evt_tencent_meeting",
+      "type": "event",
+      "title": "今晚 9 点统一通知",
+      "description": "腾讯会议通知",
+      "allDay": false,
+      "startTs": 1785496800000,
+      "endTs": 1785500400000,
+      "reminderMinutesBefore": 15,
+      "alarmEnabled": true
+    }
   ]
 }
 

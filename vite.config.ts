@@ -1470,7 +1470,7 @@ export default defineConfig(({ mode }) => {
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
-      dedupe: ['react', 'react-dom', 'lucide-react'],
+      dedupe: ['react', 'react-dom', 'lucide-react', 'jszip'],
     },
     // @sqlite.org/sqlite-wasm 在内部用 `new URL("sqlite3.wasm", import.meta.url)`
     // 定位它的 WASM 二进制。Vite 的 dep optimizer 会把包重打包到 .vite/deps/，

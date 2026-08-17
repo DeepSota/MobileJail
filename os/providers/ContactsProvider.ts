@@ -78,7 +78,9 @@ export class ContactsProvider extends ContentProvider {
   query(uri: ContentUri, projection?: string[]): Cursor<any> {
     const parsed = ContentResolver.parseUri(uri);
     const path = parsed.path;
-    const contacts = useContactsProviderStore.getState().contacts;
+    const allContacts = useContactsProviderStore.getState().contacts;
+    // By default, exclude soft-deleted contacts from queries
+    const contacts = allContacts.filter((c) => !c.deletedAt);
 
     if (path === '/contacts' || path === '/contacts/') {
       const phoneQuery = parsed.query.get('phone');
@@ -195,9 +197,14 @@ export class ContactsProvider extends ContentProvider {
     if (!single) return 0;
     const id = single[1];
     const contacts = useContactsProviderStore.getState().contacts;
-    if (!contacts.some((c) => c.id === id)) return 0;
+    const contact = contacts.find((c) => c.id === id);
+    if (!contact) return 0;
+    if (contact.deletedAt) return 0; // Already deleted
+    const now = TimeService.now();
     (useContactsProviderStore.setState as any)((state: ContactsProviderState) => {
-      state.contacts = state.contacts.filter((contact) => contact.id !== id);
+      state.contacts = state.contacts.map((c) =>
+        c.id === id ? { ...c, deletedAt: now, updatedAt: now } : c,
+      );
     });
     return 1;
   }

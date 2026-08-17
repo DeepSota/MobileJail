@@ -68,3 +68,27 @@ export function matchesSpreadsheetFileSignature(
   }
   return false;
 }
+
+export function matchesDocxFileSignature(
+  bytes: Uint8Array,
+  extension: string,
+): boolean {
+  if (extension === 'docx') {
+    return startsWith(bytes, ZIP_LOCAL_MAGIC)
+      && contains(bytes, asciiBytes('[Content_Types].xml'))
+      && contains(bytes, asciiBytes('word/document.xml'));
+  }
+  return false;
+}
+
+export function matchesPptxFileSignature(
+  bytes: Uint8Array,
+  extension: string,
+): boolean {
+  if (extension === 'pptx') {
+    return startsWith(bytes, ZIP_LOCAL_MAGIC)
+      && contains(bytes, asciiBytes('[Content_Types].xml'))
+      && contains(bytes, asciiBytes('ppt/presentation.xml'));
+  }
+  return false;
+}

@@ -15700,6 +15700,12 @@
             },
             {
               "type": "preference",
+              "key": "factory_reset_key",
+              "title": "恢复出厂设置",
+              "targetPage": "master_clear"
+            },
+            {
+              "type": "preference",
               "key": "version_name_card_view",
               "title": "OS版本"
             },
@@ -15770,12 +15776,6 @@
               "type": "preference",
               "key": "maintenancemode_key",
               "title": "维修模式"
-            },
-            {
-              "type": "preference",
-              "key": "factory_reset_key",
-              "title": "恢复出厂设置",
-              "targetPage": "master_clear"
             },
             {
               "type": "preference",

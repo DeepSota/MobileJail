@@ -621,7 +621,7 @@ export const QueryResultPage: React.FC = () => {
     const today = TimeService.getDate();
     today.setHours(0, 0, 0, 0);
     const dayNames = [s.day_sun, s.day_mon, s.day_tue, s.day_wed, s.day_thu, s.day_fri, s.day_sat];
-    return Array.from({ length: 15 }, (_, i) => {
+    return Array.from({ length: 30 }, (_, i) => {
       const d = TimeService.fromTimestamp(today.getTime());
       d.setDate(d.getDate() + i);
       const isoDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

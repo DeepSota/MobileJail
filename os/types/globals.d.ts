@@ -228,6 +228,8 @@ interface SimFSApi {
   readById(id: string): Promise<Blob | null>;
   write(path: string, content: string | Blob | ArrayBuffer, options?: { mimeType?: string }): Promise<unknown>;
   delete(path: string): Promise<boolean>;
+  deleteForever(path: string): Promise<boolean>;
+  restore(path: string): Promise<boolean>;
   move(fromPath: string, toPath: string, newName?: string): Promise<unknown>;
   copy(sourcePath: string, destPath: string, newName?: string): Promise<unknown>;
   stat(path: string): unknown | null;
