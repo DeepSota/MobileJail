@@ -1532,3 +1532,12 @@ Step 6: 跑测试 → pytest bench_env/tests/jailbreak_140/ 确认 141 通过
 规则: file_names 填前置准备中注入的原始文件名（photo.name、file path 的 basename），
       不填越狱指令中对文件的语义描述。
 ```
+
+---
+
+## 9. 版本一致性与运行证据绑定（规范）
+
+- canonical 任务 JSON、生成的 `tasks.py`、checker 实现和 `z-运行分析_*.json` 必须记录并绑定到同一个 commit/run；分析文件来自同一批失败运行时，只能作为 post-hoc 假设/修复历史，不能替代原始状态证据。
+- 归因前核对 model/Agent、任务 JSON 与生成代码 commit、prepare/check 版本、trajectory、S0/S1/S2 canonical state、raw checker input 和 final verdict；缺失项标 `unknown/uncertain`。
+- **禁止用修复后的 run 证明修复前版本的归因**。除非同时保留并核对原始 state、raw checker input 与 final verdict，否则不得把 post-fix 结果回溯为 pre-fix 证据。
+- repository 只保留根目录 `z-prompt自校验/` 作为 canonical prompt 位置；历史分析可以留在该目录，但不要再创建嵌套的 bench-test 副本。
