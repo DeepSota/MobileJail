@@ -180,7 +180,13 @@ def main() -> None:
 
     # Import here so ordinary bench_env users do not need GEPA installed.
     try:
-        from gepa.optimize_anything import OptimizeAnythingConfig, optimize_anything
+        from gepa.optimize_anything import (
+            EngineConfig,
+            GEPAConfig,
+            ReflectionConfig,
+            optimize_anything,
+        )
+        from gepa import ScoreThresholdStopper
     except ImportError as exc:
         raise SystemExit(
             "GEPA is not installed. Install it in this environment first, e.g. `python -m pip install gepa`."
@@ -211,30 +217,31 @@ def main() -> None:
         trace_limit=args.trace_limit,
     )
 
-    config = OptimizeAnythingConfig(
-        engine="gepa",
-        name=args.run_name,
-        max_evals=args.max_evals,
-        max_concurrency=args.max_concurrency,
-        output_dir=str(gepa_output_dir),
-        run_dir=str(gepa_run_dir),
-        stop_at_score=args.stop_at_score,
-        engine_config={
-            "reflection": {
-                "reflection_lm": args.reflection_lm,
-                "reflection_minibatch_size": 3,
-            },
-            "engine": {
-                "max_workers": args.max_concurrency,
-                "seed": args.split_seed,
-                "frontier_type": "hybrid",
-                "candidate_selection_strategy": "pareto",
-                "acceptance_criterion": "strict_improvement",
-                "cache_evaluation": True,
-                "raise_on_exception": False,
-                "write_agent_state": True,
-            },
-        },
+    # GEPA v0.1.4 wiring: GEPAConfig(engine=EngineConfig(...), reflection=ReflectionConfig(...)).
+    stop_callbacks = (
+        [ScoreThresholdStopper(args.stop_at_score)] if args.stop_at_score is not None else None
+    )
+    config = GEPAConfig(
+        engine=EngineConfig(
+            run_dir=str(gepa_run_dir),
+            seed=args.split_seed,
+            max_metric_calls=args.max_evals,
+            max_workers=args.max_concurrency,
+            # The MobileJail bridge groups episodes by candidate and reuses one
+            # browser per group sequentially, so keep GEPA's own parallelism off
+            # until simulator isolation is verified under your deployment.
+            parallel=False if args.max_concurrency == 1 else True,
+            frontier_type="hybrid",
+            candidate_selection_strategy="pareto",
+            acceptance_criterion="strict_improvement",
+            cache_evaluation=True,
+            raise_on_exception=False,
+        ),
+        reflection=ReflectionConfig(
+            reflection_lm=args.reflection_lm,
+            reflection_minibatch_size=3,
+        ),
+        stop_callbacks=stop_callbacks,
     )
 
     objective = (
@@ -258,31 +265,58 @@ def main() -> None:
     )
     print(f"Artifacts: {out_dir}")
 
+    # NOTE: GEPA v0.1.4 does not accept a separate ``test_set``.  The
+    # held-out test set is evaluated manually below after GEPA finishes.
     result = optimize_anything(
         seed_candidate=seed,
         batch_evaluator=bridge.batch_evaluate,
         dataset=train,
         valset=val,
-        test_set=test,
         objective=objective,
         background=background,
         config=config,
     )
 
-    best = str(result.best_candidate)
-    (out_dir / "best_jailbreak_prefix.txt").write_text(best + "\n", encoding="utf-8")
+    best_candidate = str(result.best_candidate)
+    best_score = float(result.val_aggregate_scores[result.best_idx]) if result.val_aggregate_scores else 0.0
+    (out_dir / "best_jailbreak_prefix.txt").write_text(best_candidate + "\n", encoding="utf-8")
+
+    # Evaluate on held-out test set for reporting.
+    test_scores: list[float] = []
+    test_info: list[dict] = []
+    if test:
+        print(f"\nEvaluating best candidate on {len(test)} held-out test tasks...")
+        for ex in test:
+            sc, info = bridge.evaluate(best_candidate, ex)
+            test_scores.append(sc)
+            test_info.append(info)
+
+    test_asr = (sum(1.0 for s in test_scores if s >= 1.0) / len(test_scores)) if test_scores else 0.0
+    test_avg_score = sum(test_scores) / len(test_scores) if test_scores else None
 
     summary = {
-        "best_score": getattr(result, "best_score", None),
+        "best_score_on_val": best_score,
         "best_candidate_file": str(out_dir / "best_jailbreak_prefix.txt"),
-        "metadata": getattr(result, "metadata", None),
+        "test_asr": test_asr,
+        "test_avg_score": test_avg_score,
+        "test_count": len(test),
+        "gepa_result_metadata": {
+            "total_metric_calls": result.total_metric_calls,
+            "num_candidates": result.num_candidates,
+            "seed": result.seed,
+            "run_dir": result.run_dir,
+        },
     }
     (out_dir / "result_summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
     )
 
     print("\n=== BEST JAILBREAK PREFIX ===")
-    print(best)
+    print(best_candidate)
+    print(f"\nBest validation score: {best_score:.4f}")
+    if test:
+        print(f"Test ASR ({len(test)} held-out tasks): {test_asr:.4f}")
+        print(f"Test avg score: {test_avg_score:.4f}" if test_avg_score is not None else "")
     print(f"\nSaved to: {out_dir / 'best_jailbreak_prefix.txt'}")
 
 
