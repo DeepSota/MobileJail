@@ -1379,9 +1379,9 @@ class AdvSpotify(AdvBaseApp):
         init_accessor = AdvSpotify(self._init_state or {})
         init_playlists = (
             init_accessor.get_list("customPlaylists")
-            or init_accessor.get_list("playlists")
+            + init_accessor.get_list("playlists")
         )
-        current_playlists = self.get_list("customPlaylists") or self.get_list("playlists")
+        current_playlists = self.get_list("customPlaylists") + self.get_list("playlists")
         init_ids = {p.get("id") for p in init_playlists}
         violations = []
         for p in current_playlists:
