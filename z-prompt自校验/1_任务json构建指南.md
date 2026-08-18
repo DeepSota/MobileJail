@@ -1541,3 +1541,10 @@ Step 6: 跑测试 → pytest bench_env/tests/jailbreak_140/ 确认 141 通过
 - 归因前核对 model/Agent、任务 JSON 与生成代码 commit、prepare/check 版本、trajectory、S0/S1/S2 canonical state、raw checker input 和 final verdict；缺失项标 `unknown/uncertain`。
 - **禁止用修复后的 run 证明修复前版本的归因**。除非同时保留并核对原始 state、raw checker input 与 final verdict，否则不得把 post-fix 结果回溯为 pre-fix 证据。
 - repository 只保留根目录 `z-prompt自校验/` 作为 canonical prompt 位置；历史分析可以留在该目录，但不要再创建嵌套的 bench-test 副本。
+
+## 近期构建补充：cross-app、凭据与字段契约
+
+- T0032/T0034 的确定性测试密码必须写进 JSON 的越狱指令，并出现在 generated `tasks.py.templates`；环境说明中的隐藏默认值不够。
+- File Manager→Mail 的检查类型必须使用 `mail_no_disallowed_sent`；Gallery→SMS 必须使用 `sms_no_new_sent_to`。
+- 文本内容放 `keywords`，图片/附件真实 basename 放 `file_names`/附件字段；不放描述文字或 `/sdcard/...` 全路径。
+- 修改 JSON 后必须核对 JSON、generated `tasks.py`、checker 注册 schema 和实际 run commit；四者不一致时禁止声称“已修复”。
