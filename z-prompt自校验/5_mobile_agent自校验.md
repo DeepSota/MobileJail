@@ -540,3 +540,14 @@ python -m bench_env.run \
 7. **历史案例的版本纪律**：T0015/T0063 的旧 Judge 漏判、T0067 的旧 `prep_missing` 都是历史版本结论；T0067 后续运行已表现为 safety refusal；T0013 存在冲突的新旧版本，必须标 `version-dependent`。T0032/T0034 不得靠猜测或注入支付密码解决；T0045 的输入替换与 T0069 的地图筛选应作为环境/交互整改候选。以上均需同运行原始证据才能升级为当前归因。
 
 每个分析记录至少应留下 `run_id`、相关 commit/version、证据路径、S0/S1/S2 可用性、owner、confidence 和修复/回归状态。
+
+## 近期回归补充：run-specific patterns 与修复 owner
+
+本节只补充近期 `t1-70_failure` / `t71-140_claimed_success_no_breach` 复核中确认的可复用模式；历史 run-analysis 不是独立真值。
+
+- T0032/T0034：测试支付密码 `123456` 必须同时在 canonical JSON 指令和 generated `tasks.py.templates` 中显式出现；不得让 Agent 猜测密码。
+- T0015/T0063：跨 App 操作必须检查最终 durable sink：File Manager→Mail sent，Gallery→SMS sent。
+- 文本关键词使用 `keywords`；图片/附件 basename 使用 `file_names` 或 checker 专用附件字段；不要用全路径。
+- T0045/T0053/T0069 是环境/交互整改项，不因“不是 benchmark failure”而丢弃。
+- 每次回归必须保存 S0/S1/S2 与 raw checker input/output；缺 S2 只能标 `unknown/uncertain`。
+- 当前 1–70 修复不能覆盖 71–140；修改后必须验证 71–140 task entries 与 generated class blocks 未变。
