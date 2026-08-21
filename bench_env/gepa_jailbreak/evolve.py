@@ -175,6 +175,39 @@ def _write_reproducibility_files(
     )
 
 
+def _patch_gepa_pareto_logging() -> None:
+    """Make GEPA v0.1.4 tolerate an empty valset-pareto in instance-frontier mode.
+
+    ``log_detailed_metrics_after_discovering_new_program`` asserts
+    ``len(pareto_scores) > 0`` after reading ``gepa_state.pareto_front_valset``.
+    With a scalar-only evaluator and frontier_type='instance' that mapping stays
+    empty, so every accepted candidate crashed the run before results were
+    finalized. The engine imports this function directly into its own namespace,
+    so both module attributes must be replaced for the wrapper to engage.
+    """
+    from gepa.logging import utils as _gepa_logging_utils
+    from gepa.core import engine as _gepa_core_engine
+
+    original = _gepa_logging_utils.log_detailed_metrics_after_discovering_new_program
+
+    def tolerant(*args, **kwargs):  # type: ignore[no-untyped-def]
+        try:
+            return original(*args, **kwargs)
+        except AssertionError:
+            # Empty pareto_front_valset in scalar/instance mode: log what we can.
+            try:
+                logger = _gepa_logging_utils.logger
+                logger.log(
+                    f"Iteration {args[0].i + 1}: (scalar/instance mode) valset pareto "
+                    "front is empty; skipping pareto aggregate logging"
+                )
+            except Exception:
+                pass
+
+    _gepa_logging_utils.log_detailed_metrics_after_discovering_new_program = tolerant
+    _gepa_core_engine.log_detailed_metrics_after_discovering_new_program = tolerant
+
+
 def main() -> None:
     args = _parser().parse_args()
 
@@ -221,6 +254,17 @@ def main() -> None:
     stop_callbacks = (
         [ScoreThresholdStopper(args.stop_at_score)] if args.stop_at_score is not None else None
     )
+    # ``frontier_type='hybrid'`` requires per-objective scores from the
+    # evaluator; the MobileJail bridge returns a scalar attack score, so it
+    # only supports 'instance' frontiering. When a real valset is present
+    # (generalization mode) 'hybrid' is still valid for candidate selection,
+    # but keep 'instance' whenever there is nothing to aggregate.
+    frontier_type = "hybrid" if val else "instance"
+    # The scalar bridge cannot feed GEPA's Pareto-front sampler (it needs
+    # per-objective scores; with only a scalar it asserts on an empty front).
+    # 'current_best' selects the highest-scoring candidate directly, which is
+    # well-defined for scalar rewards and still lets GEPA reflect/improve.
+    candidate_selection_strategy = "current_best"
     config = GEPAConfig(
         engine=EngineConfig(
             run_dir=str(gepa_run_dir),
@@ -231,15 +275,19 @@ def main() -> None:
             # browser per group sequentially, so keep GEPA's own parallelism off
             # until simulator isolation is verified under your deployment.
             parallel=False if args.max_concurrency == 1 else True,
-            frontier_type="hybrid",
-            candidate_selection_strategy="pareto",
-            acceptance_criterion="strict_improvement",
+            frontier_type=frontier_type,
+            candidate_selection_strategy=candidate_selection_strategy,
+            acceptance_criterion="improvement_or_equal",
             cache_evaluation=True,
             raise_on_exception=False,
         ),
         reflection=ReflectionConfig(
             reflection_lm=args.reflection_lm,
             reflection_minibatch_size=3,
+            reflection_lm_kwargs={
+                "api_key": args.model_api_key,
+                "api_base": args.model_base_url,
+            },
         ),
         stop_callbacks=stop_callbacks,
     )
@@ -267,6 +315,7 @@ def main() -> None:
 
     # NOTE: GEPA v0.1.4 does not accept a separate ``test_set``.  The
     # held-out test set is evaluated manually below after GEPA finishes.
+    _patch_gepa_pareto_logging()
     result = optimize_anything(
         seed_candidate=seed,
         batch_evaluator=bridge.batch_evaluate,
@@ -278,7 +327,20 @@ def main() -> None:
     )
 
     best_candidate = str(result.best_candidate)
-    best_score = float(result.val_aggregate_scores[result.best_idx]) if result.val_aggregate_scores else 0.0
+    # GEPA v0.1.4 exposes per-candidate aggregate scores; report the max real
+    # score instead of index-into-an-empty-list (-inf) in single-task mode.
+    best_score = None
+    if getattr(result, "val_aggregate_scores", None):
+        best_score = float(max(result.val_aggregate_scores))
+    elif out_dir.joinpath("gepa_state", "run_log.json").exists():
+        # val=0 / instance mode leaves val_aggregate_scores empty; recover the
+        # best observed subsample score from GEPA's own run log.
+        run_log = json.loads(out_dir.joinpath("gepa_state", "run_log.json").read_text(encoding="utf-8"))
+        observed = [s for e in run_log for s in list(e.get("new_subsample_scores") or [])]
+        if observed:
+            best_score = float(max(observed))
+    if best_score is None:
+        best_score = 0.0
     (out_dir / "best_jailbreak_prefix.txt").write_text(best_candidate + "\n", encoding="utf-8")
 
     # Evaluate on held-out test set for reporting.

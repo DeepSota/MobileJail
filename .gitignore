@@ -10,6 +10,7 @@ lerna-debug.log*
 
 __pycache__/
 /runs
+tmp/
 
 node_modules
 dist
