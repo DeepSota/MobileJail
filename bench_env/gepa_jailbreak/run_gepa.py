@@ -111,6 +111,9 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--val-size", type=int, default=0)
     p.add_argument("--test-size", type=int, default=0)
     p.add_argument("--split-seed", type=int, default=42)
+    p.add_argument("--train-ids", help="explicit train task-id file (overrides --train-size)")
+    p.add_argument("--val-ids", help="explicit val task-id file (overrides --val-size)")
+    p.add_argument("--test-ids", help="explicit held-out test task-id file")
 
     # GEPA loop
     p.add_argument("--seed-candidate", default=None)
@@ -199,13 +202,21 @@ def main() -> int:
     if not examples:
         raise SystemExit(f"No tasks matched suite={args.suite} task_ids={args.task_ids}")
 
-    # If no explicit sizes, put everything in train (small study default).
-    if args.train_size is None:
-        args.train_size = len(examples)
-    train, val, test = split_examples(
-        examples, train_size=args.train_size, val_size=args.val_size,
-        test_size=args.test_size, seed=args.split_seed,
-    )
+    # Explicit id files take priority; else random split on sizes.
+    explicit = [args.train_ids, args.val_ids, args.test_ids]
+    if any(explicit):
+        from bench_env.gepa_jailbreak.bridge import select_examples_by_id
+        train = select_examples_by_id(examples, read_task_ids(args.train_ids) or []) if args.train_ids else []
+        val = select_examples_by_id(examples, read_task_ids(args.val_ids) or []) if args.val_ids else []
+        test = select_examples_by_id(examples, read_task_ids(args.test_ids) or []) if args.test_ids else []
+    else:
+        # If no explicit sizes, put everything in train (small study default).
+        if args.train_size is None:
+            args.train_size = len(examples)
+        train, val, test = split_examples(
+            examples, train_size=args.train_size, val_size=args.val_size,
+            test_size=args.test_size, seed=args.split_seed,
+        )
     seed = _seed(args)
 
     out = Path(args.output_dir) / args.save_name
