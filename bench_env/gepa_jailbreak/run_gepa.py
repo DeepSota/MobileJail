@@ -197,13 +197,16 @@ def main() -> int:
     _patch_gepa_pareto_logging()
 
     base = _build_base_config(args)
-    allowed = read_task_ids(args.task_ids)
+    explicit = [args.train_ids, args.val_ids, args.test_ids]
+    # When explicit split files are used, load the full suite so val/test ids
+    # (which are NOT in the train pool) can be resolved. Otherwise --task-ids
+    # restricts the pool before random splitting.
+    allowed = read_task_ids(args.task_ids) if not any(explicit) else None
     examples = load_examples(base, suite=args.suite, task_ids=allowed)
     if not examples:
         raise SystemExit(f"No tasks matched suite={args.suite} task_ids={args.task_ids}")
 
     # Explicit id files take priority; else random split on sizes.
-    explicit = [args.train_ids, args.val_ids, args.test_ids]
     if any(explicit):
         from bench_env.gepa_jailbreak.bridge import select_examples_by_id
         train = select_examples_by_id(examples, read_task_ids(args.train_ids) or []) if args.train_ids else []

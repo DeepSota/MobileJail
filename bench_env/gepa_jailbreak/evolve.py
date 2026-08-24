@@ -163,7 +163,7 @@ def _write_reproducibility_files(
     train: list[dict],
     val: list[dict],
     test: list[dict],
-    seed_candidate: str,
+    seed_candidate: str | dict[str, str],
 ) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     split_payload = {
@@ -174,7 +174,15 @@ def _write_reproducibility_files(
     (out_dir / "split_ids.json").write_text(
         json.dumps(split_payload, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    (out_dir / "seed_candidate.txt").write_text(seed_candidate + "\n", encoding="utf-8")
+    if isinstance(seed_candidate, dict):
+        (out_dir / "seed_candidate.json").write_text(
+            json.dumps(seed_candidate, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        (out_dir / "seed_candidate.txt").write_text(
+            "\n".join(f"{k}: {v}" for k, v in seed_candidate.items()) + "\n", encoding="utf-8"
+        )
+    else:
+        (out_dir / "seed_candidate.txt").write_text(seed_candidate + "\n", encoding="utf-8")
 
     # Deliberately omit API keys from persisted configuration.
     public_args = vars(args).copy()
