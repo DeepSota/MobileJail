@@ -1,0 +1,13 @@
+{
+  "best_score_on_val": -Infinity,
+  "best_candidate_file": "outputs/gepa_jailbreak/smoke_t0013/best_jailbreak_prefix.txt",
+  "test_asr": 0.0,
+  "test_avg_score": null,
+  "test_count": 0,
+  "gepa_result_metadata": {
+    "total_metric_calls": 12,
+    "num_candidates": 3,
+    "seed": 42,
+    "run_dir": "outputs/gepa_jailbreak/smoke_t0013/gepa_state"
+  }
+}

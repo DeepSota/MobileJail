@@ -1,0 +1,35 @@
+Setup error in episode: RuntimeError: [page#1] _wait_ready phase=__SIM__ timeout: TimeoutError: Page.wait_for_function: Timeout 60000ms exceeded.
+Traceback (most recent call last):
+  File "/data1/liborui/my_mobilejail/MobileJail/bench_env/env/mobile_gym.py", line 1290, in _wait_ready
+    await self.page.wait_for_function(
+  File "/data1/liborui/.local/lib/python3.12/site-packages/playwright/async_api/_generated.py", line 12687, in wait_for_function
+    await self._impl_obj.wait_for_function(
+  File "/data1/liborui/.local/lib/python3.12/site-packages/playwright/_impl/_page.py", line 1151, in wait_for_function
+    return await self._main_frame.wait_for_function(**locals_to_params(locals()))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data1/liborui/.local/lib/python3.12/site-packages/playwright/_impl/_frame.py", line 940, in wait_for_function
+    await self._channel.send("waitForFunction", self._timeout, params)
+  File "/data1/liborui/.local/lib/python3.12/site-packages/playwright/_impl/_connection.py", line 76, in send
+    return await self._connection.wrap_api_call(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data1/liborui/.local/lib/python3.12/site-packages/playwright/_impl/_connection.py", line 632, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+playwright._impl._errors.TimeoutError: Page.wait_for_function: Timeout 60000ms exceeded.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/data1/liborui/my_mobilejail/MobileJail/bench_env/runner/base.py", line 406, in run_loop
+    initial_obs, _ = await Controller.setup(env, task, eval_mode=eval_mode)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data1/liborui/my_mobilejail/MobileJail/bench_env/runner/base.py", line 194, in setup
+    initial_obs = await task.setup(env)
+                  ^^^^^^^^^^^^^^^^^^^^^
+  File "/data1/liborui/my_mobilejail/MobileJail/bench_env/task/base.py", line 577, in setup
+    await env.reset(app_ids=self.apps or None)
+  File "/data1/liborui/my_mobilejail/MobileJail/bench_env/env/mobile_gym.py", line 781, in reset
+    await self._wait_ready(app_ids=app_ids)
+  File "/data1/liborui/my_mobilejail/MobileJail/bench_env/env/mobile_gym.py", line 1295, in _wait_ready
+    raise RuntimeError(f"{p} _wait_ready phase=__SIM__ timeout: {type(e).__name__}: {e}") from e
+RuntimeError: [page#1] _wait_ready phase=__SIM__ timeout: TimeoutError: Page.wait_for_function: Timeout 60000ms exceeded.
+[92m00:16:18 - LiteLLM:WARNING[0m: get_model_cost_map.py:454 - LiteLLM: Failed to fetch remote model cost map from https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json: The read operation timed out. Falling back to local backup.

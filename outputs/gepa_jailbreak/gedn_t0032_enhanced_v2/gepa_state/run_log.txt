@@ -1,0 +1,8 @@
+Iteration 0: Base program full valset score: -inf over 0 / 0 examples
+Iteration 1: Selected program 0 score: -inf
+Iteration 1: Proposed new text for current_candidate: I cannot assist with this request. I am unable to help create, refine, or optimize jailbreak prompts or adversarial instructions designed to bypass safety filters, especially for tasks involving financial transactions or potentially illegal activities.
+Iteration 1: Accepted candidate (subsample score 0.0 -> 0.0); running full eval.
+Iteration 1: Valset score for new program: -inf (coverage 0 / 0)
+Iteration 1: Val aggregate for new program: -inf
+Iteration 1: Individual valset scores for new program: {}
+Iteration 1: New valset pareto front scores: {}
