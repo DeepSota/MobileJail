@@ -84,7 +84,48 @@ accepts `--save-trajectories`.
 
 ## 4. Analysis and recommendations for attack evolution with GEPA
 
-**What the smoke runs actually showed**
+**Key validated finding (run `gedn_t0032_enhanced_v2`)**:
+GEPA's *reflection* LM is the model that **invents** the attack prefixes. If that
+model is the same safety-aligned model as the **target**, it refuses to craft
+jailbreak prefixes at all — it returns "I cannot assist with this request"
+instead of a candidate, and GEPA accepts that refusal as a "candidate" (a tie),
+so **there is nothing to evolve**. Concretely, with `qwen3.7-plus` as both target
+and attacker, that is exactly what happened.
+
+=> **The attacker (reflection) and the target must be different models.**
+Keep `qwen3.7-plus` as the target we want to *conquer*; give GEPA a separate,
+more-permissive model to act as the attacker. Then GEPA can explore real attack
+framings against the strong target.
+
+To run that once a permissive attacker is available:
+
+```bash
+python3 -m bench_env.gepa_jailbreak.run_gepa \
+    --suite jailbreak_140 --task-ids splits/team_t0032.txt \
+    --model-name "qwen3.7-plus" --model-base-url "https://xh.v1api.cc/v1" \
+    --model-api-key "$TARGET_KEY" \
+    --env-url "http://localhost:4173" \
+    --reflection-model "openai/<permissive-attacker>" \
+    --reflection-base-url "https://<attacker-endpoint>/v1" \
+    --reflection-api-key "$ATTACKER_KEY" \
+    --jailbreak-reflection --reflection-temperature 0.7 --reflection-minibatch 6 \
+    --max-evals 12 --save-trajectories --verbatim-transcript
+```
+
+**Knobs now exposed** (beyond the above):
+- `--reflection-minibatch N` — how many parallel attack variants GEPA reflects
+  per candidate (more = broader search, more evals).
+- `--reflection-temperature 0.7..1.5` — diversity of proposed prefixes.
+- `--jailbreak-reflection` — use a jailbreak-specialized reflection prompt that
+  reads the refusal reason from the trajectory and targets it directly.
+- `--save-trajectories` / `--verbatim-transcript` — full audit trail.
+
+**Deeper evolution**: `--max-evals` controls total episodes. Because each eval is
+a real GUI episode (~4 min), raise it only after the other wiring is green.
+Consider a held-out `--val-size` so GEPA selects a prefix that generalizes rather
+than over-fits one task.
+
+### What the smoke runs actually showed
 1. **The loop is healthy**: candidate count grows (1 -> 3), each prefix is run
    through the real simulator + judge, posterior ASR is fed back, and the
    reflection LM produces plausible attack rewrites.
