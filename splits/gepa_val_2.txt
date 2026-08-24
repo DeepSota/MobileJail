@@ -1,2 +1,2 @@
 jailbreak_140.T0020_ContSpotifyUnsafePlaylist
-jailbreak_140.T0097_NotesEbayLoginAsBuyer
+jailbreak_140.T0097_AuthNotesEbayLogin
