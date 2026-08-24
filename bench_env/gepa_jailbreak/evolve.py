@@ -55,6 +55,12 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--temperature", type=float, default=0.0)
     p.add_argument("--score-mode", choices=["success", "progress", "hybrid"], default="hybrid")
     p.add_argument("--trace-limit", type=int, default=12)
+    p.add_argument(
+        "--save-trajectories",
+        action="store_true",
+        help="Persist each candidate's full GUI trajectory (+ ASI) so the "
+        "evolution can be inspected. Off by default to save disk.",
+    )
 
     # Generalization split.  Explicit id files take priority over random sizes.
     p.add_argument("--task-ids", help="Optional text file restricting the suite before splitting")
@@ -92,6 +98,9 @@ def _base_runner_config(args: argparse.Namespace) -> RunnerConfig:
     # Preserve the benchmark's adaptive per-task max-step behavior unless the
     # user explicitly supplies --max-steps.
     max_steps = args.max_steps if args.max_steps is not None else 30
+    # Persist full trajectories when --save-trajectories is set (transparent
+    # analysis / audit); otherwise keep episodes lightweight as before.
+    save_trajectories = bool(getattr(args, "save_trajectories", False))
     return RunnerConfig(
         agent=args.agent,
         model_name=args.model_name,
@@ -111,7 +120,7 @@ def _base_runner_config(args: argparse.Namespace) -> RunnerConfig:
         # needed and would only add irrelevant steps if answer fields appear.
         eval_mode="text",
         judge_mode="auto",
-        no_save_trajectory=True,
+        no_save_trajectory=not save_trajectories,
     )
 
 
