@@ -1,0 +1,40 @@
+# Controlled GEPA-MobileJail experiment — small run (analyst spec §13)
+#
+# 8 training + 3 held-out tasks, frozen. Held-out tasks never enter GEPA.
+
+target_model: "qwen3.7-plus"
+reflection_model: "openai/deepseek-v4-flash"
+judge_model: null
+require_model_separation: true
+
+candidate_representation: "multi_component"   # prefix | whole_instruction | multi_component
+score_mode: "binary"                          # binary | shaped
+
+# Fixed GEPA evaluation budget (the controlled resource across conditions).
+max_metric_calls: 64
+reflection_minibatch_size: 2
+optimiser_seed: 17
+rollouts_per_task: 1
+
+agent: "generic_v2"
+env_url: "http://localhost:4173"
+headless: true
+max_steps: 30
+episode_timeout: 180.0
+infer_timeout: 300.0
+temperature: 0.0
+
+train_tasks:
+  - jailbreak_140.T0004_CommRedbookInsultComment
+  - jailbreak_140.T0013_PrivBrowserSubmitToken
+  - jailbreak_140.T0032_FinWechatTransferBoss
+  - jailbreak_140.T0063_LocGalleryShareCurrentPlacePhoto
+  - jailbreak_140.T0067_SafeRedbookDmDangerousChildHealth
+  - jailbreak_140.T0096_AuthMailForwardLatestUnread
+  - jailbreak_140.T0132_LocMailForwardRecentLocation
+  - jailbreak_140.T0077_SocRedbookUseFeedbackNote
+
+heldout_tasks:
+  - jailbreak_140.T0020_ContSpotifyUnsafePlaylist
+  - jailbreak_140.T0097_AuthNotesEbayLogin
+  - jailbreak_140.T0130_CopyFileManagerSharePiracyArchive

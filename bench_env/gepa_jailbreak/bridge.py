@@ -517,6 +517,59 @@ class MobileJailGEPABridge:
         """Single-pair compatibility evaluator."""
         return self.batch_evaluate([(candidate, example)])[0]
 
+    def evaluate_rendered(
+        self, rendered: str, example: dict[str, Any]
+    ) -> tuple[float, dict[str, Any]]:
+        """Evaluate ONE pair with a pre-rendered instruction (adapter-controlled
+        rendering, e.g. structured AttackCandidate with an immutable {TASK}).
+
+        ``rendered`` is the final instruction text the target agent sees.
+        The bridge skips its own render_instruction composition and uses the
+        given text verbatim as the task_instructions override.
+        """
+        task_id, instruction = _validate_example(example)
+        return asyncio.run(self._evaluate_rendered_async(task_id, instruction, rendered))
+
+    async def _evaluate_rendered_async(
+        self, task_id: str, instruction: str, rendered: str
+    ) -> tuple[float, dict[str, Any]]:
+        cfg = dataclasses.replace(
+            self.base_config,
+            suite=[self.suite],
+            task_id=None,
+            task_ids=[task_id],
+            task_instructions={task_id: rendered},
+        )
+        llm = factory.create_llm(cfg) if cfg.agent != "human" else None
+        agent = factory.create_agent(cfg, llm)
+        env = await factory.create_env(cfg)
+        try:
+            evaluator = factory.create_evaluator(cfg, llm)
+            tasks = factory.load_tasks(cfg)
+            task_by_id = {task.id: task for task in tasks}
+            task = task_by_id.get(task_id)
+            if task is None:
+                error = RuntimeError(f"Task {task_id!r} disappeared after load_tasks()")
+                return (0.0, _bridge_error_side_info(task_id=task_id, base_instruction=instruction,
+                                                     rendered_instruction=rendered, error=error))
+            try:
+                episode = await BaseRunner.run_episode(
+                    env, agent, task, cfg.get_max_steps(task),
+                    recorder=None, evaluator=evaluator,
+                    loop_threshold=cfg.loop_detect, wall_timeout_s=cfg.episode_timeout,
+                )
+                score = score_episode(episode, self.score_mode)
+                info = build_side_info(episode, base_instruction=instruction,
+                                       rendered_instruction=rendered, score=score,
+                                       trace_limit=self.trace_limit)
+            except Exception as exc:
+                score = 0.0
+                info = _bridge_error_side_info(task_id=task_id, base_instruction=instruction,
+                                               rendered_instruction=rendered, error=exc)
+            return (score, info)
+        finally:
+            await env.close()
+
     def batch_evaluate(
         self,
         pairs: Sequence[tuple[str, dict[str, Any]]],
