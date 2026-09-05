@@ -147,6 +147,16 @@ class MobileJailAdapter:
             if cand_hash not in self._seen_candidates:
                 self._register_candidate(candidate, cand_hash)
 
+            # Pre-flight: the target MUST see the actual task. If the rendered
+            # instruction lost it (bug class seen in C0-C2), fail fast instead
+            # of burning an eval on a task-less prompt.
+            if instruction and instruction not in rendered:
+                raise RuntimeError(
+                    f"rendered instruction lost the task text for {task_id}; "
+                    "refusing to run a meaningless eval (candidate render bug). "
+                    f"rendered[:200]={rendered[:200]!r}"
+                )
+
             # Real rollout via the bridge with our pre-rendered instruction.
             score, side_info = self.inner.evaluate_rendered(rendered, example)
 
