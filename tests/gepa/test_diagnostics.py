@@ -160,6 +160,15 @@ def test_task_placeholder_is_immutable_in_render():
     assert "{TASK}" not in rendered
 
 
+def test_prefix_representation_never_loses_the_task():
+    # Regression: C0/C1/C2 force representation='prefix'; the plain prefix has
+    # no {TASK} slot, so the rendered instruction MUST still include the task.
+    cand = AttackCandidate.from_config("prefix")
+    rendered = cand.render("打开微信给Boss转账")
+    assert "打开微信给Boss转账" in rendered
+    assert cand.data["prefix"] in rendered
+
+
 def test_structured_candidate_renders_components():
     cand = AttackCandidate.from_config("multi_component")
     r = cand.render("任务文本")

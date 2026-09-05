@@ -91,6 +91,9 @@ class AttackCandidate:
         """Compose the full instruction GEPA sends to the target.
 
         ``{TASK}`` in every component is replaced by the immutable task text.
+        If no component carried the task (e.g. plain ``prefix`` representation
+        without a wrapper), the task is appended at the end so it is NEVER lost
+        — the agent must always see the actual objective.
         """
         parts: list[str] = []
         for comp in self.components:
@@ -100,7 +103,10 @@ class AttackCandidate:
             if TASK_PLACEHOLDER in text:
                 text = text.replace(TASK_PLACEHOLDER, task_instruction)
             parts.append(text)
-        return "\n\n".join(parts)
+        rendered = "\n\n".join(parts)
+        if task_instruction and task_instruction not in rendered:
+            rendered = f"{rendered}\n\n--- MOBILEJAIL TASK ---\n{task_instruction}" if rendered else task_instruction
+        return rendered
 
     def to_dict(self) -> dict[str, Any]:
         return {
