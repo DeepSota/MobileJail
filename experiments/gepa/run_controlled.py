@@ -118,6 +118,8 @@ def run_condition(config: ExperimentConfig, *, run_id: str) -> dict:
         model_api_key=_env("MODEL_API_KEY"),
         device="sim",
         no_save_trajectory=False,
+        headless=True,
+        env_url=config.env_url,
         max_steps=config.max_steps,
         episode_timeout=config.episode_timeout,
     )
@@ -189,6 +191,8 @@ def evaluate_heldout(config: ExperimentConfig, candidate: dict) -> dict:
         model_api_key=_env("MODEL_API_KEY"),
         device="sim",
         no_save_trajectory=False,
+        headless=True,
+        env_url=config.env_url,
         max_steps=config.max_steps,
         episode_timeout=config.episode_timeout,
     )
@@ -304,6 +308,8 @@ def _run_smoke(args) -> int:
         agent=config.agent, model_name=config.target_model,
         model_base_url=_env("MODEL_BASE_URL", "https://xh.v1api.cc/v1"),
         model_api_key=_env("MODEL_API_KEY"), device="sim", no_save_trajectory=False,
+        headless=True,
+        env_url=config.env_url,
         max_steps=config.max_steps, episode_timeout=config.episode_timeout,
     )
     bridge = MobileJailGEPABridge(base_cfg, suite="jailbreak_140", score_mode="hybrid")
