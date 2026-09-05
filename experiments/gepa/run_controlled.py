@@ -312,6 +312,14 @@ def main() -> int:
     )
     if args.run_dir:
         cfg = _replace_run_dir(cfg, args.run_dir)
+    else:
+        # Fresh timestamped run dir per run (never reuse — GEPA caches state
+        # under run_dir and a stale cache silently resumes the previous run).
+        from pathlib import Path
+        cfg = _replace_run_dir(
+            cfg,
+            str(Path("runs/gepa") / f"{args.condition}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"),
+        )
     cfg.validate()
 
     run_id = f"{args.condition}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
