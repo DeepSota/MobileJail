@@ -199,7 +199,18 @@ def classify_failure(result: EpisodeResult) -> dict[str, Any]:
     # 3. Grounding / GUI failure: agent acted but couldn't complete the UI step
     #    (non-refusal stop or empty answer with real actions taken).
     took_action = any(str(s.get("action_type")) != "ABORT" for s in trace)
-    refused = _has_refusal_marker(agent_msg) or _has_refusal_marker(agent_ans)
+    # Refusal detection scans the WHOLE trajectory (thoughts + actions + final
+    # message), so refusals living in the agent's reasoning (e.g. repeated
+    # ABORT/WAIT loops with safety text) are not mislabelled as misinterpretation.
+    trace_text = " ".join(
+        str(s.get("thought") or "") + " " + str(s.get("data") or "")
+        for s in trace
+    )
+    refused = (
+        _has_refusal_marker(agent_msg)
+        or _has_refusal_marker(agent_ans)
+        or _has_refusal_marker(trace_text)
+    )
 
     if stop in ("REPETITIVE_LOOP", "EPISODE_TIMEOUT", "MAX_STEPS") and not refused:
         return {
