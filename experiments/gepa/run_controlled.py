@@ -256,7 +256,35 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--score-mode", choices=["binary", "shaped"], default=None)
     p.add_argument("--seed", action="store_true", default=False, help="run seed vs tasks (integrity smoke, no GEPA)")
     p.add_argument("--run-dir", default=None)
+    p.add_argument("--config", default=None,
+                   help="yaml config (e.g. configs/gepa/mobilejail_refusal.yaml); "
+                        "overrides ExperimentConfig defaults for split/models/budget")
     return p
+
+
+def _load_config_yaml(path: str) -> ExperimentConfig:
+    """Load a config yaml into an ExperimentConfig (best-effort; unknown keys warn)."""
+    import dataclasses
+    from pathlib import Path
+
+    try:
+        import yaml
+    except ImportError as e:
+        raise SystemExit("PyYAML not installed: pip install pyyaml") from e
+
+    raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+    known = {f.name for f in dataclasses.fields(ExperimentConfig)}
+    kwargs: dict = {}
+    for k, v in raw.items():
+        if k == "train_tasks":
+            kwargs["train_task_ids"] = tuple(v)
+        elif k == "heldout_tasks":
+            kwargs["heldout_task_ids"] = tuple(v)
+        elif k in known:
+            kwargs[k] = v
+        else:
+            print(f"[config] ignoring unknown key: {k}")
+    return ExperimentConfig(**kwargs)
 
 
 def main() -> int:
@@ -267,8 +295,14 @@ def main() -> int:
     if args.condition == "smoke":
         return _run_smoke(args)
 
-    # Build condition-aware config.
-    cfg = ExperimentConfig(
+    # Build condition-aware config (yaml --config overrides code defaults).
+    if args.config:
+        cfg = _load_config_yaml(args.config)
+    else:
+        cfg = ExperimentConfig()
+    import dataclasses
+    cfg = dataclasses.replace(
+        cfg,
         max_metric_calls=args.budget or (_BUDGETS[args.condition]),
         require_model_separation=(args.condition != "C0"),
         candidate_representation=args.representation or ("multi_component" if args.condition in ("C4",) else ("whole_instruction" if args.condition == "C3" else ("prefix" if args.condition in ("C0", "C1", "C2") else "multi_component"))),

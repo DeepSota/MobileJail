@@ -543,6 +543,7 @@ class MobileJailGEPABridge:
         llm = factory.create_llm(cfg) if cfg.agent != "human" else None
         agent = factory.create_agent(cfg, llm)
         env = await factory.create_env(cfg)
+        recorder = None if getattr(cfg, "no_save_trajectory", False) else factory.create_recorder(cfg)
         try:
             evaluator = factory.create_evaluator(cfg, llm)
             tasks = factory.load_tasks(cfg)
@@ -555,7 +556,7 @@ class MobileJailGEPABridge:
             try:
                 episode = await BaseRunner.run_episode(
                     env, agent, task, cfg.get_max_steps(task),
-                    recorder=None, evaluator=evaluator,
+                    recorder=recorder, evaluator=evaluator,
                     loop_threshold=cfg.loop_detect, wall_timeout_s=cfg.episode_timeout,
                 )
                 score = score_episode(episode, self.score_mode)
@@ -568,6 +569,11 @@ class MobileJailGEPABridge:
                                                rendered_instruction=rendered, error=exc)
             return (score, info)
         finally:
+            if recorder is not None:
+                try:
+                    recorder.close()
+                except Exception:
+                    pass
             await env.close()
 
     def batch_evaluate(
