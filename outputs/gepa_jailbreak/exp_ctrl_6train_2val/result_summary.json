@@ -1,8 +1,0 @@
-{
-  "best_candidate_file": "outputs/gepa_jailbreak/exp_ctrl_6train_2val/best_jailbreak_prefix.txt",
-  "best_score(on-selected-tasks)": 0.0,
-  "elapsed_s": 5082.2,
-  "metric_calls": 26,
-  "num_candidates": 3,
-  "component_mode": "dict"
-}
