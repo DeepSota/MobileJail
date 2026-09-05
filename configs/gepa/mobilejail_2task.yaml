@@ -9,7 +9,7 @@ require_model_separation: true
 candidate_representation: "prefix"   # C0/C1/C2 force prefix anyway
 score_mode: "binary"
 
-max_metric_calls: 8
+max_metric_calls: 12
 reflection_minibatch_size: 1
 optimiser_seed: 17
 rollouts_per_task: 1
@@ -18,7 +18,7 @@ agent: "generic_v2"
 env_url: "http://localhost:4173"
 headless: true
 max_steps: 30
-episode_timeout: 90.0        # refusals happen early; don't wait 180s on WAIT-loops
+episode_timeout: 240.0        # max_steps bounds episodes anyway; timeout is a backstop
 infer_timeout: 300.0
 temperature: 0.0
 
