@@ -343,7 +343,10 @@ def _replace_run_dir(cfg: ExperimentConfig, run_dir: str):
 def _run_smoke(args) -> int:
     """Integrity smoke: run seed candidate against all train+heldout tasks with
     no GEPA, verifying the evaluator + taxonomy + simulator wiring."""
-    config = ExperimentConfig()
+    if args.config:
+        config = _load_config_yaml(args.config)
+    else:
+        config = ExperimentConfig()
     config.validate()
     from bench_env.config import RunnerConfig
     from bench_env.gepa_jailbreak.bridge import MobileJailGEPABridge
