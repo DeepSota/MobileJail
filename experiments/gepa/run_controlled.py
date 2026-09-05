@@ -131,6 +131,8 @@ def run_condition(config: ExperimentConfig, *, run_id: str) -> dict:
         config, bridge, logger, run_id=run_id, seed_candidate_hash=seed_hash,
         score_fn=score_fn,
     )
+    adapter.seed_dict = dict(seed.data) if isinstance(seed.data, dict) else None
+    adapter.seed_text = seed.data if isinstance(seed.data, str) else None
 
     # GEPA entry. Use the adapter's evaluate as the batch evaluator.
     result = optimize_anything(
@@ -256,7 +258,7 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--score-mode", choices=["binary", "shaped"], default=None)
     p.add_argument("--seed", action="store_true", default=False, help="run seed vs tasks (integrity smoke, no GEPA)")
     p.add_argument("--run-dir", default=None)
-    p.add_argument("--config", default=None,
+    p.add_argument("--config", default='configs/gepa/mobilejail_refusal.yaml',
                    help="yaml config (e.g. configs/gepa/mobilejail_refusal.yaml); "
                         "overrides ExperimentConfig defaults for split/models/budget")
     return p

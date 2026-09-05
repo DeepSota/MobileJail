@@ -544,6 +544,11 @@ class MobileJailGEPABridge:
         agent = factory.create_agent(cfg, llm)
         env = await factory.create_env(cfg)
         recorder = None if getattr(cfg, "no_save_trajectory", False) else factory.create_recorder(cfg)
+        if recorder is not None:
+            try:
+                recorder.start_run(agent=getattr(cfg, "agent", "gepa"))
+            except Exception:
+                pass  # recorder may already be started / non-fatal
         try:
             evaluator = factory.create_evaluator(cfg, llm)
             tasks = factory.load_tasks(cfg)
@@ -571,7 +576,7 @@ class MobileJailGEPABridge:
         finally:
             if recorder is not None:
                 try:
-                    recorder.close()
+                    recorder.finish_run()
                 except Exception:
                     pass
             await env.close()

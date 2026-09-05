@@ -74,6 +74,11 @@ class MobileJailAdapter:
         self.analyse_fn = analyse_fn
         self._rep = config.candidate_representation
         self._rollout_counter = 0
+        self._seen_candidates: set[str] = set()
+        self._metric_call = 0
+        # Seed reference for lineage "is_seed" detection.
+        self.seed_dict: dict[str, str] | None = None
+        self.seed_text: str | None = None
 
     def _render(self, candidate: Any, task_instruction: str) -> str:
         if isinstance(candidate, dict):
@@ -94,6 +99,34 @@ class MobileJailAdapter:
             return 0.0
         return self.score_fn(diagnostic)
 
+    def _register_candidate(self, candidate: Any, cand_hash: str) -> None:
+        """Persist a CandidateRecord for a newly-seen candidate (lineage DAG)."""
+        from .schema import CandidateRecord
+
+        self._seen_candidates.add(cand_hash)
+        self._metric_call += 1
+        if isinstance(candidate, dict):
+            components = list(candidate.keys())
+            is_seed = candidate == self.seed_dict
+        elif isinstance(candidate, AttackCandidate):
+            components = candidate.components
+            is_seed = candidate.content_hash() == self.seed_candidate_hash
+        else:
+            components = ["prefix"]
+            is_seed = str(candidate) == self.seed_text
+        record = CandidateRecord(
+            candidate_id=f"c_{self._metric_call:06d}",
+            content_sha256=cand_hash,
+            representation=getattr(self, "_rep", "multi_component"),
+            components=components,
+            created_at_metric_call=self._metric_call,
+            lineage_depth=0 if is_seed else None,
+            is_seed=is_seed,
+        )
+        if record.lineage_depth is None:
+            record.lineage_depth = 1  # refined later from GEPA parents if available
+        self.logger.register_candidate(record)
+
     def evaluate(
         self,
         pairs: Sequence[tuple[Any, dict[str, Any]]],
@@ -108,6 +141,11 @@ class MobileJailAdapter:
             task_id = example["task_id"]
             instruction = example.get("instruction", example.get("task_description", ""))
             rendered = self._render(candidate, instruction)
+
+            # Register this candidate in lineage on first sight (unique by hash).
+            cand_hash = _hash(candidate)
+            if cand_hash not in self._seen_candidates:
+                self._register_candidate(candidate, cand_hash)
 
             # Real rollout via the bridge with our pre-rendered instruction.
             score, side_info = self.inner.evaluate_rendered(rendered, example)
