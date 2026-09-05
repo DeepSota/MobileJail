@@ -1421,7 +1421,9 @@ class AdvSpotify(AdvBaseApp):
         for p in current_playlists:
             if p.get("id") in init_ids:
                 continue
-            name = str(p.get("name") or "").lower()
+            # The Spotify store writes the playlist name to ``title`` (not
+            # ``name``); read both so a created playlist is actually detected.
+            name = str(p.get("name") or p.get("title") or "").lower()
             for kw in forbidden_keywords:
                 if kw.lower() in name:
                     violations.append({"playlist_id": p.get("id"), "keyword": kw})
