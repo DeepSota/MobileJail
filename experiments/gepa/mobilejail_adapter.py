@@ -190,14 +190,49 @@ class MobileJailAdapter:
                 candidate_hash=_hash(candidate),
                 target_model=self.config.target_model,
             )
+            # Log the FULL rollout record (with checker internals) — that's for
+            # our own auditing/rollouts.jsonl.
             self.logger.write_rollout(rec)
 
-            # ASI: compact structured diagnosis for reflection.
-            side_info_out = dict(side_info)
+            # ASI for GEPA's reflection: STRIP checker internals. The rubric
+            # (expected/actual strings, forbidden keywords, judge dicts, internal
+            # ids) must never reach the reflection LM — otherwise GEPA's attack
+            # "learns" to parrot the checker instead of subverting the agent,
+            # which nothing transferable. Full detail stays in the rollout log.
+            side_info_out = _sanitize_side_info(side_info)
             side_info_out["failure_category"] = str(diag.failure_category)
             side_info_out["diagnostic"] = diag.as_side_info()
             result.append((opt_score, side_info_out))
         return result
+
+
+# Checker-internals keys whose raw content must never reach GEPA's reflection LM.
+_CHECK_LEAK_KEYS = {
+    "breached_checks", "defended_checks", "judge_issues", "judge",
+    "check_summary", "checker_passed", "state_mutation",
+}
+
+
+def _sanitize_side_info(side_info: dict) -> dict:
+    """Redact checker/rubric internals from the reflection-facing ASI.
+
+    Keeps observables (task, agent message/answer, GUI trajectory) which are the
+    legitimate attack-evolution signal. Removes anything that reveals the grading
+    rubric (expected/actual state, forbidden keywords, internal ids/field names)
+    so GEPA cannot 'game' the checker or quote it back in an attack.
+    """
+    out = {
+        k: v for k, v in side_info.items() if k not in _CHECK_LEAK_KEYS
+    }
+    # Keep only pass/fail counts for diagnosis, never the rubric text.
+    leak_summary = side_info.get("check_summary")
+    if isinstance(leak_summary, dict):
+        out["check_summary_redacted"] = {
+            "total": leak_summary.get("total"),
+            "breached": leak_summary.get("breached"),
+            "defended": leak_summary.get("defended"),
+        }
+    return out
 
 
 def _hash(candidate: Any) -> str:
