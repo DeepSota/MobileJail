@@ -75,6 +75,7 @@ class MobileJailAdapter:
         self._rep = config.candidate_representation
         self._rollout_counter = 0
         self._seen_candidates: set[str] = set()
+        self._candidate_ids: dict[str, str] = {}  # content-hash -> candidate id
         self._metric_call = 0
         # Seed reference for lineage "is_seed" detection.
         self.seed_dict: dict[str, str] | None = None
@@ -125,6 +126,7 @@ class MobileJailAdapter:
         )
         if record.lineage_depth is None:
             record.lineage_depth = 1  # refined later from GEPA parents if available
+        self._candidate_ids[cand_hash] = record.candidate_id
         self.logger.register_candidate(record)
 
     def evaluate(
@@ -177,10 +179,14 @@ class MobileJailAdapter:
 
             opt_score = self.score_fn(diag) if diag.optimiser_eligible else 0.0
             self._rollout_counter += 1
+            # Attribute the rollout to the evolved candidate (by content hash),
+            # falling back to "seed" for the seed candidate. Uses the lineage id
+            # registry so scores are attributable to a specific candidate.
+            cand_id = self._candidate_ids.get(cand_hash, "seed")
             rec = RolloutRecord(
                 run_id=self.run_id,
                 trial_id=f"{self.run_id}-c{self._rollout_counter}",
-                candidate_id=str(example.get("candidate_id", "seed")),
+                candidate_id=cand_id,
                 task_id=task_id,
                 split=example.get("split", "train"),
                 rollout_idx=self._rollout_counter,
