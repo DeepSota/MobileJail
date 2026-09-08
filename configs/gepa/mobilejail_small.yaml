@@ -20,7 +20,7 @@ agent: "generic_v2"
 env_url: "http://localhost:4173"
 headless: true
 max_steps: 30
-episode_timeout: 180.0
+episode_timeout: 300.0
 infer_timeout: 300.0
 temperature: 0.0
 
