@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 from .candidate import AttackCandidate
 from .config import ExperimentConfig
@@ -328,7 +329,89 @@ def main() -> int:
     print(f"run_dir: {cfg.run_dir}")
     print(f"best candidate: {result['best_candidate']}")
     print(f"metric_calls: {result['metric_calls']}")
+
+    # Post-run: write summary report + save best candidate to artifacts/
+    _write_run_report(cfg.run_dir, cfg, result)
     return 0
+
+
+_ARTIFACTS_DIR = Path("artifacts/gepa")
+
+
+def _write_run_report(run_dir: Path, cfg: ExperimentConfig, result: dict) -> None:
+    """Write a human-readable summary report into the run dir and save the best
+    candidate to a persistent artifacts/ folder."""
+    report = []
+    report.append(f"# GEPA evolution report — {run_dir.name}")
+    report.append(f"")
+    report.append(f"**Condition**: {run_dir.name.split('_')[0]}  |  **Budget**: {cfg.max_metric_calls}  |  **Score mode**: {cfg.score_mode}")
+    report.append(f"**Target**: {cfg.target_model}  |  **Attacker**: {cfg.reflection_model}")
+    report.append(f"")
+    report.append(f"## Train tasks ({len(cfg.train_task_ids)})")
+    for t in cfg.train_task_ids:
+        report.append(f"- {t}")
+    report.append(f"")
+    report.append(f"## Held-out tasks ({len(cfg.heldout_task_ids)})")
+    for t in cfg.heldout_task_ids:
+        report.append(f"- {t}")
+
+    # Rollout summary
+    roll_path = run_dir / "rollouts.jsonl"
+    if roll_path.exists():
+        import json
+        from collections import Counter
+        rows = [json.loads(l) for l in roll_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+        report.append(f"")
+        report.append(f"## Rollouts ({len(rows)} total)")
+        successes = sum(1 for r in rows if r["diagnostic"]["outcome_success"])
+        report.append(f"- **Successes**: {successes}  |  **Success rate**: {successes/max(len(rows),1):.2f}")
+        mix = Counter(r["diagnostic"]["failure_category"] for r in rows)
+        report.append(f"- **Failure mix**: {dict(mix)}")
+        report.append(f"")
+        report.append(f"### Per-task scores")
+        for r in rows:
+            report.append(f"  | {r['candidate_id']:8s} | {r['task_id'].split('.')[-1]:42s} | score={r['score']:.2f} | {r['diagnostic']['failure_category']}")
+        report.append(f"")
+        report.append(f"**Note**: candidate_id = `c_NNNNNN` identifies the specific evolved prefix; `seed` = the original seed candidate.")
+
+    # Best candidate
+    best = result.get("best_candidate")
+    report.append(f"")
+    report.append(f"## Best candidate")
+    if isinstance(best, dict):
+        best_str = best.get("prefix", str(best))
+    else:
+        best_str = str(best)
+    report.append(f"```")
+    report.append(best_str[:800])
+    report.append(f"```")
+    report.append(f"")
+    report.append(f"**Is this the seed or evolved?**")
+    report.append(f"The best candidate in `result_summary.json` is the highest-scoring candidate at the end of the run. ")
+    report.append(f"If it equals the seed prefix, no evolution exceeded it. If it differs, the attacker produced a better variant.")
+    report.append(f"")
+    report.append(f"**What is 'prefix'?**")
+    report.append(f"The prefix is the GEPA-optimized text prepended before each task instruction. ")
+    report.append(f"During the run, GEPA proposes variants (prefixes) — some accepted, some rejected. ")
+    report.append(f"The `best_jailbreak_prefix.txt` file holds the final best prefix. ")
+    report.append(f"Intermediate candidates are logged in `candidates.jsonl` and `lineage.jsonl`.")
+    report.append(f"")
+    report.append(f"## Trajectories")
+    report.append(f"- Seed (initial) trajectory: look in `runs/<timestamp>/trajectory/<task_id>/` for the earliest experiment run.")
+    report.append(f"- Best candidate trajectory: same location, but for the final run's episodes.")
+    report.append(f"- Intermediate runs can be deleted without losing the summary.")
+
+    (run_dir / "run_summary.md").write_text("\n".join(report), encoding="utf-8")
+    print(f"Summary: {run_dir / 'run_summary.md'}")
+
+    # Save best candidate to artifacts/ for posterity.
+    _ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+    if isinstance(best, dict):
+        text = best.get("prefix", str(best))
+    else:
+        text = str(best)
+    (Path(_ARTIFACTS_DIR) / f"{run_dir.name}_best_candidate.txt").write_text(text + "\n", encoding="utf-8")
+    print(f"Best candidate saved: {_ARTIFACTS_DIR / f'{run_dir.name}_best_candidate.txt'}")
 
 
 _BUDGETS = {"C0": 32, "C1": 32, "C2": 64, "C3": 64, "C4": 96, "C5": 128}
