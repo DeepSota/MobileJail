@@ -23,8 +23,8 @@ agent: "generic_v2"
 env_url: "http://localhost:4173"
 headless: true
 max_steps: 30
-episode_timeout: 180.0
-infer_timeout: 300.0
+episode_timeout: 600.0       # generous; max_steps bounds episodes, timeout is a backstop
+infer_timeout: 600.0
 temperature: 0.0
 
 train_tasks:

@@ -102,8 +102,8 @@ class ExperimentConfig:
     env_url: str = "http://localhost:4173"
     headless: bool = True
     max_steps: int = 30
-    episode_timeout: float = 180.0
-    infer_timeout: float = 300.0
+    episode_timeout: float = 600.0
+    infer_timeout: float = 600.0
     temperature: float = 0.0
 
     # --- output ---
