@@ -42,15 +42,16 @@ the agent must actually mutate the UI state to score.
 
 ## Experiment conditions
 
-| Condition | Attacker | Feedback | Budget |
-|-----------|----------|----------|--------|
-| C0 | same as target | scalar | 32 |
-| C1 | deepseek | scalar | 32 |
-| **C2** | deepseek | **structured ASI** | 64 |
-| C3 | deepseek | structured (whole-instruction) | 64 |
-| C4 | deepseek | structured (multi-component) | 96 |
+| Condition | Attacker | Representation | Score | Feedback | Budget |
+|-----------|----------|----------------|-------|----------|--------|
+| C0 | same as target | prefix | shaped | scalar | 64 |
+| C1 | deepseek | prefix | shaped | scalar | 64 |
+| **C2** | deepseek | prefix | shaped | **structured ASI** | 64 |
+| C3 | deepseek | whole-instruction | shaped | structured | 64 |
+| C4 | deepseek | multi-component | shaped | structured | 64 |
+| C5 | deepseek | multi-component | shaped | structured | 128 |
 
-C2 is the primary condition (structured feedback is the research thesis).
+Interpretation is now controlled: C0→C1 isolates proposer-model separation; C1→C2 isolates feedback richness; C2→C3→C4 isolates the mutable attack representation. C5 is the explicitly larger-budget exploration condition.
 
 ## Understanding the output
 
@@ -60,7 +61,8 @@ After a run, these files are created:
 |------|-------------------|
 | `runs/gepa/<condition>_<timestamp>/run_summary.md` | **Start here** — per-task scores, failure mix, seed vs evolved comparison |
 | `runs/gepa/<condition>_<timestamp>/rollouts.jsonl` | Every episode: candidate_id, task, score, failure category |
-| `runs/gepa/<condition>_<timestamp>/candidates.jsonl` | Every candidate: id, hash, depth, is_seed |
+| `runs/gepa/<condition>_<timestamp>/candidates.jsonl` | Every locally observed candidate: id, hash, depth, is_seed |
+| `runs/gepa/<condition>_<timestamp>/gepa_result.json` | GEPA-native candidates, parent DAG, scores, and metric-call counts |
 | `runs/<timestamp>/trajectory/<task_id>/` | Per-step screenshots + actions (click/tap/type) |
 | `artifacts/gepa/<run>_best_candidate.txt` | **Best evolved prefix saved permanently** |
 
@@ -100,7 +102,7 @@ differs, the attacker produced a better variant.
 2. **Held-out tasks never enter search**. 8 train + 3 held-out, disjoint.
 3. **Structured ASI, not binary**. The evaluator emits a failure category
    (e.g. `TARGET_REFUSAL_EARLY`) plus compact trajectory evidence.
-4. **Fixed budget**. Conditions are compared at equal `max_metric_calls`.
+4. **Fixed budget**. C0–C4 use equal `max_metric_calls`; C5 is explicitly the larger-budget condition.
 5. **Checker internals stripped from ASI**. The reflection LM never sees
    the grading rubric — only the agent's observables (trajectory, text).
 6. **Everything is logged**. Rollouts, lineage, candidates, and a summary
