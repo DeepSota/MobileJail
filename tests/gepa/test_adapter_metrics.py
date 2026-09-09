@@ -160,3 +160,23 @@ def test_sanitize_side_info_strips_checker_rubric():
     assert out["trajectory"] == raw["trajectory"]
     # only counts survive
     assert out["check_summary_redacted"] == {"total": 1, "breached": 0, "defended": 1}
+
+
+def test_scalar_feedback_mode_exposes_score_only(tmp_path: Path):
+    bridge = MockBridge({"T1": {"success": False, "progress": 0.0, "stop": "ABORT", "msg": "我拒绝"}})
+    cfg = ExperimentConfig(
+        train_task_ids=("T1",), heldout_task_ids=("H1",),
+        feedback_mode="scalar", run_dir=tmp_path,
+    )
+    logger = LineageLogger(cfg.run_dir)
+    seed = AttackCandidate.from_config("multi_component")
+    adapter = MobileJailAdapter(
+        cfg, bridge, logger, run_id="test-run",
+        seed_candidate_hash=seed.content_hash(),
+        score_fn=lambda d: 1.0 if d.outcome_success else 0.0,
+    )
+    out = adapter.evaluate([(seed.data, {"task_id": "T1", "instruction": "do T1", "split": "train"})])
+    assert out[0][1] == {"score": 0.0}
+    # Full diagnostics still remain in local audit logs.
+    assert logger.rollouts[0].diagnostic.failure_category == FailureCategory.TARGET_REFUSAL_EARLY
+    logger.close()
