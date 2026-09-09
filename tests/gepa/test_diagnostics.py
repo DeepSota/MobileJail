@@ -62,6 +62,12 @@ def test_baseline_config_allows_same_model_roles_explicitly():
     cfg.validate()  # must not raise
 
 
+def test_unknown_feedback_mode_rejected():
+    cfg = ExperimentConfig(feedback_mode="not-a-mode")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="unknown feedback_mode"):
+        cfg.validate()
+
+
 # --- taxonomy / invalid trials ---
 
 def test_invalid_environment_trial_does_not_become_attack_failure():
