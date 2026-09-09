@@ -21,6 +21,7 @@ from typing import Literal
 
 CandidateRepresentation = Literal["prefix", "whole_instruction", "multi_component"]
 ScoreMode = Literal["binary", "shaped"]
+FeedbackMode = Literal["scalar", "structured"]
 
 DEFAULT_TRAIN_TASKS: tuple[str, ...] = (
     "jailbreak_140.T0004_CommRedbookInsultComment",
@@ -62,6 +63,9 @@ class ExperimentConfig:
         prefix | whole_instruction | multi_component
     score_mode : str
         binary (0/1, reporting metric) or shaped (graded optimisation signal).
+    feedback_mode : str
+        scalar exposes only the score to GEPA reflection; structured also exposes
+        sanitized trajectory diagnostics. This is independent of score shaping.
     max_metric_calls : int
         Fixed GEPA evaluation budget. This is the controlled resource when
         comparing optimisers/conditions (per analyst spec §11).
@@ -90,6 +94,7 @@ class ExperimentConfig:
     # --- attack representation ---
     candidate_representation: CandidateRepresentation = "multi_component"
     score_mode: ScoreMode = "binary"
+    feedback_mode: FeedbackMode = "structured"
 
     # --- GEPA budget ---
     max_metric_calls: int = 64
@@ -139,6 +144,8 @@ class ExperimentConfig:
             errors.append(f"unknown candidate_representation: {self.candidate_representation}")
         if self.score_mode not in ("binary", "shaped"):
             errors.append(f"unknown score_mode: {self.score_mode}")
+        if self.feedback_mode not in ("scalar", "structured"):
+            errors.append(f"unknown feedback_mode: {self.feedback_mode}")
 
         if errors:
             raise ValueError("ExperimentConfig invalid:\n- " + "\n- ".join(errors))
@@ -152,6 +159,7 @@ class ExperimentConfig:
             "require_model_separation": self.require_model_separation,
             "candidate_representation": self.candidate_representation,
             "score_mode": self.score_mode,
+            "feedback_mode": self.feedback_mode,
             "max_metric_calls": self.max_metric_calls,
             "reflection_minibatch_size": self.reflection_minibatch_size,
             "optimiser_seed": self.optimiser_seed,
