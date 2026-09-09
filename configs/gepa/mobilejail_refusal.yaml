@@ -11,7 +11,8 @@ judge_model: null
 require_model_separation: true
 
 candidate_representation: "multi_component"   # prefix | whole_instruction | multi_component
-score_mode: "binary"                          # binary | shaped
+score_mode: "shaped"                         # binary | shaped
+feedback_mode: "structured"                  # scalar | structured
 
 # Fixed GEPA evaluation budget (the controlled resource across conditions).
 max_metric_calls: 64
