@@ -169,6 +169,15 @@ def run_condition(config: ExperimentConfig, *, run_id: str) -> dict:
 
     best = result.best_candidate
     best_hash = _hash_best(best)
+
+    # Preserve GEPA-native lineage and per-candidate scores verbatim. The local
+    # rollout logger attributes evaluations by content hash; result.parents is
+    # the authoritative mutation DAG produced by GEPA itself.
+    import json
+    (config.run_dir / "gepa_result.json").write_text(
+        json.dumps(result.to_dict(), ensure_ascii=False, indent=2, default=str),
+        encoding="utf-8",
+    )
     logger.close()
 
     return {
@@ -257,6 +266,7 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--budget", type=int, default=None, help="max_metric_calls (default: 32 smoke, 64 C0-C4, 128 confirm)")
     p.add_argument("--representation", choices=["prefix", "whole_instruction", "multi_component"], default=None)
     p.add_argument("--score-mode", choices=["binary", "shaped"], default=None)
+    p.add_argument("--feedback-mode", choices=["scalar", "structured"], default=None)
     p.add_argument("--seed", action="store_true", default=False, help="run seed vs tasks (integrity smoke, no GEPA)")
     p.add_argument("--run-dir", default=None)
     p.add_argument("--config", default='configs/gepa/mobilejail_refusal.yaml',
@@ -304,12 +314,29 @@ def main() -> int:
     else:
         cfg = ExperimentConfig()
     import dataclasses
+    condition_defaults = {
+        # C0 vs C1 isolates proposer alignment/model identity only.
+        "C0": {"representation": "prefix", "score_mode": "shaped", "feedback_mode": "scalar"},
+        "C1": {"representation": "prefix", "score_mode": "shaped", "feedback_mode": "scalar"},
+        # C1 vs C2 isolates structured trajectory feedback only.
+        "C2": {"representation": "prefix", "score_mode": "shaped", "feedback_mode": "structured"},
+        # C2/C3/C4 isolate the mutable attack representation at equal budget.
+        "C3": {"representation": "whole_instruction", "score_mode": "shaped", "feedback_mode": "structured"},
+        "C4": {"representation": "multi_component", "score_mode": "shaped", "feedback_mode": "structured"},
+        # C5 is the explicitly larger-budget exploration condition.
+        "C5": {"representation": "multi_component", "score_mode": "shaped", "feedback_mode": "structured"},
+    }
+    defaults = condition_defaults[args.condition]
     cfg = dataclasses.replace(
         cfg,
-        max_metric_calls=args.budget or (_BUDGETS[args.condition]),
+        max_metric_calls=args.budget or _BUDGETS[args.condition],
         require_model_separation=(args.condition != "C0"),
-        candidate_representation=args.representation or ("multi_component" if args.condition in ("C4",) else ("whole_instruction" if args.condition == "C3" else ("prefix" if args.condition in ("C0", "C1", "C2") else "multi_component"))),
-        score_mode=args.score_mode or ("shaped" if args.condition in ("C2", "C3", "C4") else "binary"),
+        # C0 deliberately reuses the target model as proposer; every other
+        # condition uses the independently configured reflection model.
+        reflection_model=(cfg.target_model if args.condition == "C0" else cfg.reflection_model),
+        candidate_representation=args.representation or defaults["representation"],
+        score_mode=args.score_mode or defaults["score_mode"],
+        feedback_mode=args.feedback_mode or defaults["feedback_mode"],
     )
     if args.run_dir:
         cfg = _replace_run_dir(cfg, args.run_dir)
@@ -343,7 +370,7 @@ def _write_run_report(run_dir: Path, cfg: ExperimentConfig, result: dict) -> Non
     report = []
     report.append(f"# GEPA evolution report — {run_dir.name}")
     report.append(f"")
-    report.append(f"**Condition**: {run_dir.name.split('_')[0]}  |  **Budget**: {cfg.max_metric_calls}  |  **Score mode**: {cfg.score_mode}")
+    report.append(f"**Condition**: {run_dir.name.split('_')[0]}  |  **Budget**: {cfg.max_metric_calls}  |  **Score mode**: {cfg.score_mode}  |  **Feedback**: {cfg.feedback_mode}")
     report.append(f"**Target**: {cfg.target_model}  |  **Attacker**: {cfg.reflection_model}")
     report.append(f"")
     report.append(f"## Train tasks ({len(cfg.train_task_ids)})")
@@ -413,7 +440,7 @@ def _write_run_report(run_dir: Path, cfg: ExperimentConfig, result: dict) -> Non
     print(f"Best candidate saved: {_ARTIFACTS_DIR / f'{run_dir.name}_best_candidate.txt'}")
 
 
-_BUDGETS = {"C0": 32, "C1": 32, "C2": 64, "C3": 64, "C4": 96, "C5": 128}
+_BUDGETS = {"C0": 64, "C1": 64, "C2": 64, "C3": 64, "C4": 64, "C5": 128}
 
 
 def _replace_run_dir(cfg: ExperimentConfig, run_dir: str):
