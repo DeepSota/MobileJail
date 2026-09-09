@@ -205,9 +205,14 @@ class MobileJailAdapter:
             # ids) must never reach the reflection LM — otherwise GEPA's attack
             # "learns" to parrot the checker instead of subverting the agent,
             # which nothing transferable. Full detail stays in the rollout log.
-            side_info_out = _sanitize_side_info(side_info)
-            side_info_out["failure_category"] = str(diag.failure_category)
-            side_info_out["diagnostic"] = diag.as_side_info()
+            if self.config.feedback_mode == "scalar":
+                # Scalar-feedback ablation: expose only the score. This isolates
+                # feedback richness from score shaping in C1 vs C2.
+                side_info_out = {"score": opt_score}
+            else:
+                side_info_out = _sanitize_side_info(side_info)
+                side_info_out["failure_category"] = str(diag.failure_category)
+                side_info_out["diagnostic"] = diag.as_side_info()
             result.append((opt_score, side_info_out))
         return result
 
