@@ -10,7 +10,7 @@ const calIcon = (name: string) => name ? `/@app-assets/Calendar/icons/${name}.sv
 import { MaskIcon } from '../components/MaskIcon';
 import { CalendarActionSheet } from '../components/CalendarActionSheet';
 import { Toast } from '@/os/components/Toast';
-import { useCalendarStore, selectSelectedDate } from '../state';
+import { useCalendarStore, selectSelectedDate, selectVisibleEvents } from '../state';
 import { strings } from '../res/strings';
 import { stringsEn } from '../res/strings.en';
 import { useAppStrings } from '@/os/useAppStrings';
@@ -31,7 +31,7 @@ const CalendarHomePage: React.FC = () => {
     const selectedDate = useCalendarStore(selectSelectedDate);
     const setSelectedDate = useCalendarStore(s => s.setSelectedDate);
     const settings = useCalendarStore(s => s.settings);
-    const calendarEvents = useCalendarStore(s => s.events);
+    const calendarEvents = useCalendarStore(selectVisibleEvents);
     const s = useAppStrings(strings, stringsEn);
 
     const [activeView, setActiveView] = React.useState<CalendarViewType>('month');

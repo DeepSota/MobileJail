@@ -30,12 +30,16 @@ export const SignaturePage = () => {
 
     return (
         <div className="min-h-full bg-app-bg p-4">
-            <input 
-                type="text" 
+            <textarea
                 value={signature}
-                onChange={(e) => setSignature(e.target.value)}
+                onChange={(e) => {
+                    setSignature(e.target.value);
+                    e.target.style.height = 'auto';
+                    e.target.style.height = e.target.scrollHeight + 'px';
+                }}
                 placeholder="填写个性签名"
-                className="w-full bg-transparent border-b border-app-primary py-2 text-lg focus:outline-none" 
+                className="w-full bg-transparent border-b border-app-primary py-2 text-lg focus:outline-none resize-none overflow-hidden"
+                rows={1}
                 autoFocus
             />
             <div className="text-right text-(--app-c-settings-item-chevron) text-sm mt-2">{30 - signature.length}</div>

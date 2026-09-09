@@ -737,6 +737,7 @@ export const HomePage: React.FC = () => {
                 // Map the key to its Chinese label and compare.
                 const activeCategoryLabel = strings[activeCategory as StringKey];
                 if (!activeCategoryLabel) return true;
+                if (!note.category) return true; // new notes without category always show
                 return note.category === activeCategoryLabel;
               })
               .slice(0, displayCount)}

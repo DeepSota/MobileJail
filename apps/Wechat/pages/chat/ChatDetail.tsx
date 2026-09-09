@@ -475,7 +475,7 @@ export const ChatDetail: React.FC = () => {
       </div>
 
       <div
-        className="flex-shrink-0 border-t border-app-border px-3 py-2 flex items-center gap-3"
+        className="flex-shrink-0 border-t border-app-border px-3 py-2 flex items-end gap-3"
         style={{ backgroundColor: 'var(--app-c-chat-input-bar-bg)' }}
         data-keep-keyboard="true"
       >
@@ -485,10 +485,14 @@ export const ChatDetail: React.FC = () => {
             ref={inputRef}
             rows={1}
             value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
+            onChange={(e) => {
+              setInputValue(e.target.value);
+              e.target.style.height = 'auto';
+              e.target.style.height = e.target.scrollHeight + 'px';
+            }}
             onKeyDown={handleKeyDown}
             onFocus={() => setShowChatPlusMenu(false)}
-            className="w-full bg-app-surface rounded-[6px] px-3 py-2 text-(--app-chat-bubble-text-size) focus:outline-none min-h-(--app-card-height-40) max-h-(--app-card-height-120) shadow-sm resize-none"
+            className="w-full bg-app-surface rounded-[6px] px-3 py-2 text-(--app-chat-bubble-text-size) focus:outline-none min-h-(--app-card-height-40) max-h-(--app-card-height-120) shadow-sm resize-none overflow-hidden"
             style={{ lineHeight: '24px' }}
           />
         </div>

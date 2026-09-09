@@ -137,6 +137,9 @@ export interface FSNode {
   createdAt: number;            // Timestamp
   modifiedAt: number;           // Timestamp
 
+  // Soft-delete marker (set by deleteNode, cleared by restoreNode)
+  trashedAt?: number;           // Timestamp when moved to trash; undefined = not trashed
+
   // Storage location marker
   storage: 'preset' | 'indexeddb' | 'memory';
 
@@ -145,6 +148,8 @@ export interface FSNode {
   width?: number;               // Image/video width
   height?: number;              // Image/video height
   duration?: number;            // Video/audio duration in seconds
+  /** Text-file content exposed to deterministic task judges. */
+  contentText?: string;
 }
 
 /**
@@ -205,11 +210,21 @@ export interface MediaItem {
 export interface Album {
   id: string;
   name: string;
-  type: 'system' | 'app';       // System album vs app-specific
+  type: 'system' | 'app' | 'user';  // System / app-specific / user-created
   coverUri?: string;
   coverPath?: string;           // Path for async loading
   count: number;
   pathPattern?: string;         // Path pattern to match, e.g., "/sdcard/DCIM/Camera"
+}
+
+/**
+ * User-created album definition (persisted in MediaProvider store)
+ */
+export interface UserAlbumDef {
+  id: string;          // e.g. 'user_1722844800000_abc123'
+  name: string;        // display name (user-entered)
+  pathPattern: string; // e.g. '/sdcard/Pictures/旅行'
+  createdAt: number;
 }
 
 /**

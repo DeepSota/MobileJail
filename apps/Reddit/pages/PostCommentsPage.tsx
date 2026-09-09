@@ -87,6 +87,13 @@ function formatCompactCount(n: number): string {
   return `${n}`;
 }
 
+function resizeCommentTextarea(element: HTMLTextAreaElement): void {
+  element.style.height = 'auto';
+  const nextHeight = Math.min(element.scrollHeight, 120);
+  element.style.height = `${nextHeight}px`;
+  element.style.overflowY = element.scrollHeight > 120 ? 'auto' : 'hidden';
+}
+
 /* ── Multi-image carousel (comments) ── */
 const CommentsImageCarousel: React.FC<{ images: string[] }> = ({ images }) => {
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
@@ -190,9 +197,13 @@ export const PostCommentsPage: React.FC = () => {
   const [confirmDelete, setConfirmDelete] = React.useState<{ comment: CommentItem } | null>(null);
   const [selectedOwnCommentId, setSelectedOwnCommentId] = React.useState<string | null>(null);
   const [sharePostId, setSharePostId] = React.useState<string | null>(null);
-  const inputRef = React.useRef<HTMLInputElement | null>(null);
+  const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
   const post = useRedditPostById(postId);
   const allComments = useRedditComments(postId);
+
+  React.useEffect(() => {
+    if (inputRef.current) resizeCommentTextarea(inputRef.current);
+  }, [draft]);
 
   const displayPostUpvotes = React.useMemo(() => {
     const base = parseCompactCount(post?.upvotes);
@@ -733,14 +744,21 @@ export const PostCommentsPage: React.FC = () => {
             </button>
           </div>
         )}
-        <div className="flex items-center gap-2">
-          <div className="flex-1 h-11 rounded-full bg-gray-100 flex items-center px-4">
-            <input
+        <div className="flex items-end gap-2">
+          <div className="flex-1 min-w-0">
+            <textarea
               ref={inputRef}
+              rows={1}
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              onChange={(e) => {
+                setDraft(e.target.value);
+                resizeCommentTextarea(e.currentTarget);
+              }}
+              onInput={(e) => resizeCommentTextarea(e.currentTarget)}
+              onFocus={(e) => resizeCommentTextarea(e.currentTarget)}
+              onBlur={(e) => resizeCommentTextarea(e.currentTarget)}
               placeholder="Join the conversation"
-              className="w-full bg-transparent outline-none text-[15px] text-app-text placeholder-gray-500"
+              className="block w-full min-h-11 focus:min-h-[72px] max-h-[120px] rounded-[22px] bg-gray-100 px-4 py-2.5 outline-none resize-none overflow-y-hidden text-[15px] leading-[22px] text-app-text placeholder-gray-500 transition-[min-height]"
             />
           </div>
           <button

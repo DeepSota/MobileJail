@@ -13,6 +13,9 @@ from bench_env.agent.base import AgentConfig, BaseAgent, AgentStepRecord
 from bench_env.env.base import Action, ActionType, Observation
 from bench_env.llm import LLMClient
 
+from PIL import Image
+import io
+import base64
 
 class AutoGLMAgent(BaseAgent):
     """
@@ -34,7 +37,42 @@ class AutoGLMAgent(BaseAgent):
     """
 
     # ==================== 类属性 ====================
-    
+    @staticmethod
+    def _resize_image_data_url(data_url: str, max_size: int = 2048) -> str:
+        """将 data URL 中的图像缩放到指定最大尺寸，保持宽高比。"""
+        # 解析 data URL，获取 base64 编码的图像数据
+        if not data_url.startswith('data:image/png;base64,') and not data_url.startswith('data:image/jpeg;base64,'):
+            # 如果不是预期的格式，直接返回原数据
+            print('[Warning] Unexpected image data URL format, skipping resize.')
+            return data_url
+        
+        base64_data = data_url.split(',', 1)[1]
+        image_bytes = base64.b64decode(base64_data)
+        
+        # 使用 PIL 打开图像
+        img = Image.open(io.BytesIO(image_bytes))
+        width, height = img.size
+        
+        # 检查是否需要缩放
+        if width <= max_size and height <= max_size:
+            return data_url
+        
+        # 计算缩放比例，保持宽高比
+        scale = max_size / max(width, height)
+        new_width = int(width * scale)
+        new_height = int(height * scale)
+        
+        # 使用 LANCZOS 重采样（高质量缩放）
+        resized_img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        
+        # 将缩放后的图像编码为 base64
+        buffered = io.BytesIO()
+        resized_img.save(buffered, format="PNG")
+        resized_base64 = base64.b64encode(buffered.getvalue()).decode()
+        
+        # 返回新的 data URL
+        return f"data:image/png;base64,{resized_base64}"
+
     @staticmethod
     def _get_today_string() -> str:
         """获取格式化的今日日期"""
@@ -392,10 +430,19 @@ class AutoGLMAgent(BaseAgent):
         else:
             user_text = f"** Screen Info **\n\n{screen_info}{user_comment}"
 
+        # messages.append({
+        #     "role": "user",
+        #     "content": [
+        #         {"type": "image_url", "image_url": {"url": obs.image_data_url}},
+        #         {"type": "text", "text": user_text},
+        #     ],
+        # })
+        # 缩放图像以避免超过模型限制 (2048x2048)
+        scaled_image_url = self._resize_image_data_url(obs.image_data_url, max_size=2048)
         messages.append({
             "role": "user",
             "content": [
-                {"type": "image_url", "image_url": {"url": obs.image_data_url}},
+                {"type": "image_url", "image_url": {"url": scaled_image_url}},
                 {"type": "text", "text": user_text},
             ],
         })

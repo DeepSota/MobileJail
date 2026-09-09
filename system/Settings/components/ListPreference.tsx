@@ -15,6 +15,7 @@ export const ListPreference: React.FC<{
   settingKey: string;
   showDivider?: boolean;
   onMissingOptions?: () => void;
+  disabled?: boolean;
 }> = ({
   title,
   summary,
@@ -23,6 +24,7 @@ export const ListPreference: React.FC<{
   settingKey,
   showDivider = true,
   onMissingOptions,
+  disabled = false,
 }) => {
   const s = useAppStrings(strings, stringsEn);
   const { bindTap } = useSettingsGestures();
@@ -46,10 +48,10 @@ export const ListPreference: React.FC<{
         title={title}
         summary={summary}
         value={selectedLabel || undefined}
-        showChevron={true}
+        showChevron={!disabled}
         showDivider={showDivider}
-        itemProps={options.length ? dialog.bindOpen<HTMLDivElement>() : undefined}
-        onClick={options.length ? undefined : onMissingOptions}
+        itemProps={!disabled && options.length ? dialog.bindOpen<HTMLDivElement>() : undefined}
+        onClick={!disabled && options.length === 0 ? onMissingOptions : undefined}
       />
 
       {dialog.isOpen && (

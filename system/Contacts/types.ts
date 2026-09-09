@@ -38,5 +38,8 @@ export interface Contact {
 
   createdAt?: number;
   updatedAt?: number;
+
+  /** Soft-delete marker (set by deleteContact, cleared by restoreContact) */
+  deletedAt?: number;
 }
 

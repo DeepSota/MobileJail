@@ -244,11 +244,15 @@ export const BillDetailPage: React.FC = () => {
               <div className="flex items-end gap-3 rounded-2xl bg-[#F7F8FC] px-4 py-3">
                 <textarea
                   value={noteValue}
-                  onChange={event => setNoteValue(event.target.value)}
+                  onChange={event => {
+                    setNoteValue(event.target.value);
+                    event.target.style.height = 'auto';
+                    event.target.style.height = event.target.scrollHeight + 'px';
+                  }}
                   onBlur={() => updateTransferRecord(record.id, { note: noteValue.trim() })}
                   placeholder={s.tap_to_add_note}
-                  rows={2}
-                  className="min-h-[48px] flex-1 resize-none bg-transparent text-sm text-gray-800 outline-none placeholder:text-gray-400"
+                  rows={1}
+                  className="min-h-[48px] flex-1 resize-none bg-transparent text-sm text-gray-800 outline-none placeholder:text-gray-400 overflow-hidden max-h-[120px]"
                 />
                 <IcCamera size={18} className="mb-1 text-gray-400" />
               </div>

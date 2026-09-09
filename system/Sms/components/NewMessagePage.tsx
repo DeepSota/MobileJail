@@ -385,23 +385,25 @@ export const NewMessagePage: React.FC = () => {
                                     </div>
                                 )}
                             </button>
-                            <div className="flex-1 bg-app-surface rounded-full flex items-center px-4 py-2.5">
-                                <input
-                                    type="text"
+                            <div className="flex-1 bg-app-surface rounded-2xl flex items-end px-4 py-2.5">
+                                <textarea
                                     value={message}
                                     onChange={(e) => {
                                         setMessage(e.target.value);
                                         setInlineError(null);
+                                        e.target.style.height = 'auto';
+                                        e.target.style.height = e.target.scrollHeight + 'px';
                                     }}
                                     onKeyDown={(e) => {
                                         if (e.key !== 'Enter') return;
                                         e.preventDefault();
                                         if (!e.repeat && !e.nativeEvent.isComposing && canSend) void handleSend();
                                     }}
-                                    className="flex-1 text-[14px] text-app-text outline-none"
+                                    rows={1}
+                                    className="flex-1 text-[14px] text-app-text outline-none resize-none overflow-hidden max-h-[120px]"
                                     placeholder={s.sms_placeholder}
                                 />
-                                <button className="ml-2 text-blue-500">
+                                <button className="ml-2 text-blue-500 flex-shrink-0 self-end mb-0.5">
                                     <QuestionCircleIcon />
                                 </button>
                             </div>

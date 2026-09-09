@@ -60,7 +60,9 @@
         "voLTE": true
       }
     ],
-    "defaultDataSim": 1
+    "defaultDataSim": 1,
+    "defaultCallsSim": 1,
+    "defaultSmsSim": 1
   },
 
   "settings": {

@@ -96,7 +96,7 @@ export const DateSelectPage: React.FC = () => {
     const d = TimeService.getDate();
     d.setHours(0, 0, 0, 0);
     const maxDate = TimeService.fromTimestamp(d.getTime());
-    maxDate.setDate(maxDate.getDate() + 14);
+    maxDate.setDate(maxDate.getDate() + 365);
     const formatDate = (value: Date) => (
       `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`
     );
@@ -108,10 +108,10 @@ export const DateSelectPage: React.FC = () => {
 
   const months = useMemo(() => {
     const now = TimeService.getDate();
-    return [
-      { year: now.getFullYear(), month: now.getMonth() },
-      { year: now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear(), month: (now.getMonth() + 1) % 12 },
-    ];
+    return Array.from({ length: 12 }, (_, i) => {
+        const m = now.getMonth() + i;
+        return { year: now.getFullYear() + Math.floor(m / 12), month: m % 12 };
+      });
   }, []);
 
   const handleSelect = (dateStr: string) => {

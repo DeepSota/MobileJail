@@ -333,6 +333,10 @@ class MobileGymEnv(BaseMobileEnv):
         # sms - 短信
         "短信": "sms",
         "SMS": "sms",
+        # mail - 邮件
+        "邮件": "mail",
+        "邮箱": "mail",
+        "Mail": "mail",
         # calendar - 日历
         "日历": "calendar",
         "Calendar": "calendar",

@@ -10,6 +10,7 @@ lerna-debug.log*
 
 __pycache__/
 /runs
+tmp/
 
 node_modules
 dist
@@ -77,3 +78,6 @@ mobilegym-data
 _REMOVED_FILES.md
 docs/pending
 docs/archive
+
+# Experiment/generated outputs (keep out of git)
+/outputs

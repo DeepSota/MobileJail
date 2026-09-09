@@ -320,6 +320,23 @@ export const NAVIGATION_DECLARATION = {
       description: '写文字（发布确认）',
     },
     {
+      path: '/publish/long-article',
+      component: 'PublishLongArticlePage',
+      params: {},
+      entryPoint: 'none',
+      scrollContainers: MAIN_SCROLL,
+      uiStates: [{
+        id: 'publishLongArticle.base',
+        search: {},
+        description: '写长文',
+        actions: [
+          { id: 'publish.longarticle.submit', label: '发布长文', behavior: 'submit' },
+        ],
+      }],
+      queryParams: {},
+      description: '写长文（全屏编辑）',
+    },
+    {
       path: '/publish/photo/final',
       component: 'PublishPhotoFinalPage',
       params: {},
@@ -1746,6 +1763,17 @@ export const NAVIGATION_DECLARATION = {
       params: {},
       label: '进入发布确认',
       ui: { placement: 'topbar', icon: 'publish_final', gesture: 'tap' },
+    },
+    {
+      id: 'publish.long_article.open',
+      from: ['/publish/text'],
+      to: '/publish/long-article',
+      search: {},
+      searchParams: {},
+      mode: 'push',
+      params: {},
+      label: '进入写长文',
+      ui: { placement: 'content', icon: 'publish_long_article', gesture: 'tap' },
     },
     {
       id: 'publish.text.finish',

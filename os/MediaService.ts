@@ -4,10 +4,11 @@
  * Provides gallery/media functionality built on top of FileSystemService.
  * Handles media picking, album management, and media queries.
  */
-import { MediaItem, Album, MediaPickerOptions, MediaPickerResult, FSNode } from './types';
+import { MediaItem, Album, MediaPickerOptions, MediaPickerResult, FSNode, UserAlbumDef } from './types';
 import * as FileSystem from './FileSystemService';
 import { ALBUM_DEFINITIONS } from './data/fileSystemConfig';
 import * as TimeService from './TimeService';
+import { getUserAlbums, getAlbumNameOverrides } from './providers/MediaProvider';
 
 // ============================================================================
 // Internal State
@@ -31,32 +32,30 @@ export function isPublicMediaPath(path: string): boolean {
  * Get all albums with their cover and count
  */
 export function getAlbums(): Album[] {
+  const nameOverrides = getAlbumNameOverrides();
   const allMedia = FileSystem.getMediaFiles()
     .filter(f => isPublicMediaPath(f.path))
     .filter(f => f.mimeType?.startsWith('image/') || f.mimeType?.startsWith('video/'));
-  
-  return ALBUM_DEFINITIONS.map(def => {
+
+  const staticAlbums = ALBUM_DEFINITIONS.map(def => {
     let items: FSNode[];
-    
+
     if ((def as any).mimePrefix) {
-      // Filter by MIME type (e.g., videos)
       items = allMedia.filter(m => m.mimeType?.startsWith((def as any).mimePrefix));
     } else if (def.pathPattern) {
-      // Filter by path pattern
-      items = def.id === 'all' 
+      items = def.id === 'all'
         ? allMedia
         : allMedia.filter(m => m.path.startsWith(def.pathPattern!));
     } else {
       items = [];
     }
-    
-    // Get first image as cover
+
     const coverItem = items.find(i => i.mimeType?.startsWith('image/'));
     const coverUri = coverItem ? FileSystem.getFileUri(coverItem.path) : null;
-    
+
     return {
       id: def.id,
-      name: def.name,
+      name: nameOverrides[def.id] || def.name,
       type: def.type,
       coverUri: coverUri || undefined,
       coverPath: coverItem?.path,
@@ -64,6 +63,25 @@ export function getAlbums(): Album[] {
       pathPattern: def.pathPattern || undefined,
     };
   }).filter(album => album.count > 0 || album.id === 'all');
+
+  // User-created albums
+  const userAlbumDefs = getUserAlbums();
+  const userAlbums: Album[] = userAlbumDefs.map(def => {
+    const items = allMedia.filter(m => m.path.startsWith(def.pathPattern));
+    const coverItem = items.find(i => i.mimeType?.startsWith('image/'));
+    const coverUri = coverItem ? FileSystem.getFileUri(coverItem.path) : null;
+    return {
+      id: def.id,
+      name: def.name,
+      type: 'user' as const,
+      coverUri: coverUri || undefined,
+      coverPath: coverItem?.path,
+      count: items.length,
+      pathPattern: def.pathPattern,
+    };
+  });
+
+  return [...staticAlbums, ...userAlbums];
 }
 
 /**
@@ -73,13 +91,25 @@ export function getMediaItems(options?: {
   albumId?: string;
   type?: 'image' | 'video' | 'all';
 }): MediaItem[] {
-  const albumDef = options?.albumId 
+  // Look up in static album definitions first
+  let albumDef = options?.albumId
     ? ALBUM_DEFINITIONS.find(a => a.id === options.albumId)
     : ALBUM_DEFINITIONS.find(a => a.id === 'all');
+
+  // Also check user albums
+  let userAlbumDef: UserAlbumDef | undefined;
+  if (options?.albumId && !albumDef) {
+    userAlbumDef = getUserAlbums().find(a => a.id === options.albumId);
+  }
   
   let files: FSNode[];
-  
-  if (!albumDef) {
+
+  if (userAlbumDef) {
+    // User album: filter by path pattern
+    files = FileSystem.getFilesByPath(userAlbumDef.pathPattern).filter(
+      f => f.mimeType?.startsWith('image/') || f.mimeType?.startsWith('video/'),
+    );
+  } else if (!albumDef) {
     files = FileSystem.getMediaFiles();
   } else if ((albumDef as any).mimePrefix) {
     // Album defined by MIME type

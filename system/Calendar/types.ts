@@ -31,6 +31,7 @@ export interface CalendarEvent {
     alarmEnabled?: boolean;
     calendarAccount?: string;
     color?: string;
+    trashedAt?: number;
 }
 
 export interface CalendarPersistedState {

@@ -303,14 +303,14 @@ function ensureDirectorySync(path: string): FSNode | null {
 /**
  * List contents of a directory
  */
-export function listDirectory(path: string): FSNode[] {
+export function listDirectory(path: string, includeTrashed = false): FSNode[] {
   const normalPath = normalizePath(path);
   const dirId = state.pathIndex.get(normalPath);
-  
+
   if (!dirId) return [];
-  
+
   return Array.from(state.nodes.values())
-    .filter(node => node.parentId === dirId)
+    .filter(node => node.parentId === dirId && (includeTrashed || !node.trashedAt))
     .sort((a, b) => {
       // Directories first, then by name
       if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
@@ -452,18 +452,19 @@ export function getMediaFiles(type?: 'image' | 'video' | 'audio'): FSNode[] {
     : type === 'video' ? 'video/'
     : type === 'audio' ? 'audio/'
     : null;
-  
+
   return Array.from(state.nodes.values())
     .filter(node => {
       if (node.type !== 'file') return false;
       if (!node.mimeType) return false;
-      
+      if (node.trashedAt) return false;
+
       if (mimePrefix) {
         return node.mimeType.startsWith(mimePrefix);
       }
-      
+
       // Return all media types
-      return node.mimeType.startsWith('image/') || 
+      return node.mimeType.startsWith('image/') ||
              node.mimeType.startsWith('video/') ||
              node.mimeType.startsWith('audio/');
     })
@@ -477,7 +478,7 @@ export function getFilesByPath(pathPattern: string): FSNode[] {
   const pattern = normalizePath(pathPattern);
   
   return Array.from(state.nodes.values())
-    .filter(node => node.type === 'file' && node.path.startsWith(pattern))
+    .filter(node => node.type === 'file' && node.path.startsWith(pattern) && !node.trashedAt)
     .sort((a, b) => b.modifiedAt - a.modifiedAt);
 }
 
@@ -490,8 +491,9 @@ export function searchFiles(query: string, options?: {
   type?: 'file' | 'directory';
 }): FSNode[] {
   const lowerQuery = query.toLowerCase();
-  
+
   return Array.from(state.nodes.values()).filter(node => {
+    if (node.trashedAt) return false;
     if (options?.type && node.type !== options.type) return false;
     if (options?.mimeType && !node.mimeType?.startsWith(options.mimeType)) return false;
     if (options?.path && !node.path.startsWith(options.path)) return false;
@@ -534,6 +536,7 @@ export async function writeFile(
   const blob = content instanceof Blob
     ? content
     : new Blob([content], { type: options?.mimeType || 'application/octet-stream' });
+  const contentText = blob.type.startsWith('text/') ? await blob.text() : undefined;
   
   const now = TimeService.now();
   const createdAt = Number.isFinite(options?.createdAt) ? Number(options?.createdAt) : now;
@@ -553,6 +556,7 @@ export async function writeFile(
     if (Number.isFinite(options?.createdAt)) node.createdAt = createdAt;
     node.storage = 'indexeddb';
     if (options?.mimeType) node.mimeType = options.mimeType;
+    node.contentText = contentText;
   } else {
     // Create new file
     const parentId = state.pathIndex.get(parentPath)!;
@@ -567,6 +571,7 @@ export async function writeFile(
       createdAt,
       modifiedAt,
       storage: 'indexeddb',
+      contentText,
     };
     state.nodes.set(node.id, node);
     state.pathIndex.set(normalPath, node.id);
@@ -580,30 +585,68 @@ export async function writeFile(
 }
 
 /**
- * Delete a file or directory
+ * Delete a file or directory (soft-delete: sets trashedAt timestamp)
  */
 export async function deleteNode(path: string): Promise<boolean> {
   const node = getNode(path);
   if (!node) return false;
-  
+
+  const now = TimeService.now();
+
   if (node.type === 'directory') {
-    // Recursively delete children
-    const children = listDirectory(path);
+    // Recursively soft-delete children
+    const children = listDirectory(path, true);
     for (const child of children) {
       await deleteNode(child.path);
+    }
+  }
+
+  // Soft-delete: mark as trashed
+  node.trashedAt = now;
+  node.modifiedAt = now;
+
+  await saveMetadataToDB(node);
+
+  return true;
+}
+
+/**
+ * Permanently delete a file or directory (hard-delete, removes from store)
+ */
+export async function deleteNodeForever(path: string): Promise<boolean> {
+  const node = getNode(path);
+  if (!node) return false;
+
+  if (node.type === 'directory') {
+    const children = listDirectory(path, true);
+    for (const child of children) {
+      await deleteNodeForever(child.path);
     }
   } else if (node.storage === 'indexeddb') {
     await deleteFileFromDB(node.id);
   }
-  // For legacy preset files: remove from metadata only; content is still in public assets
-  
-  // Clear blob URL cache if exists
+
   clearBlobUrlCache(node.id);
-  
   state.nodes.delete(node.id);
   state.pathIndex.delete(node.path);
   await deleteMetadataFromDB(node.id);
-  
+
+  return true;
+}
+
+/**
+ * Restore a soft-deleted file or directory
+ */
+export async function restoreNode(path: string): Promise<boolean> {
+  const node = getNode(path);
+  if (!node || !node.trashedAt) return false;
+
+  const now = TimeService.now();
+  node.trashedAt = undefined;
+  node.modifiedAt = now;
+
+  await saveMetadataToDB(node);
+
   return true;
 }
 
@@ -1417,6 +1460,8 @@ function exposeAgentAPI(): void {
     readById: readFileById,
     write: writeFile,
     delete: deleteNode,
+    deleteForever: deleteNodeForever,
+    restore: restoreNode,
     move: moveNode,
     copy: copyFile,
     

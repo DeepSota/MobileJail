@@ -202,9 +202,13 @@ export const GrokPage: React.FC<{ isActive?: boolean }> = ({ isActive = true }) 
                     
                     <textarea
                         value={inputValue}
-                        onChange={(e) => setInputValue(e.target.value)}
+                        onChange={(e) => {
+                            setInputValue(e.target.value);
+                            e.target.style.height = 'auto';
+                            e.target.style.height = e.target.scrollHeight + 'px';
+                        }}
                         placeholder={s.grok_input_placeholder}
-                        className="flex-1 bg-transparent text-app-text placeholder-gray-400 resize-none py-2 max-h-32 focus:outline-none text-base"
+                        className="flex-1 bg-transparent text-app-text placeholder-gray-400 resize-none py-2 max-h-32 focus:outline-none text-base overflow-hidden"
                         rows={1}
                         style={{ minHeight: '40px' }}
                         data-action={isActive ? "grok.prompt.input" : undefined}

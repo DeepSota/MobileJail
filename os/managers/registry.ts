@@ -29,6 +29,8 @@ type BuildOverrides = Partial<DeviceInfoPreset>;
 type TelephonyOverrides = Partial<{
   sims: SimInfoPreset[];
   defaultDataSim: 1 | 2;
+  defaultCallsSim: 1 | 2 | 0;
+  defaultSmsSim: 1 | 2 | 0;
 }>;
 
 const keyToManager = new Map<string, ManagerWithPreferences>();
@@ -246,6 +248,7 @@ export function normalizePreferenceKey(key: string): string {
   if (k === 'wifi_tether_network_password' || k === 'wifi_tether_network_password_2') return 'hotspot_password';
   if (k === 'battery_saver') return 'battery_saver';
   if (k === 'phone_language') return 'language';
+  if (k === 'notif.app.calendar.enabled') return 'calendar_notification_enabled';
 
   if (k === 'brightness') return 'brightness';
   if (k === 'auto_brightness' || k === 'brightness_auto_mode_enable') return 'auto_brightness';
@@ -283,11 +286,13 @@ export function getEffectiveBuildInfo(): DeviceInfoPreset {
   };
 }
 
-export function getEffectiveTelephony(): { sims: SimInfoPreset[]; defaultDataSim: 1 | 2 } {
-  const defaults = OS_DEFAULTS.telephony as { sims: SimInfoPreset[]; defaultDataSim: 1 | 2 };
+export function getEffectiveTelephony(): { sims: SimInfoPreset[]; defaultDataSim: 1 | 2; defaultCallsSim: 1 | 2 | 0; defaultSmsSim: 1 | 2 | 0 } {
+  const defaults = OS_DEFAULTS.telephony as { sims: SimInfoPreset[]; defaultDataSim: 1 | 2; defaultCallsSim?: 1 | 2 | 0; defaultSmsSim?: 1 | 2 | 0 };
   return {
     sims: cloneSims(telephonyOverrides.sims ?? defaults.sims),
     defaultDataSim: telephonyOverrides.defaultDataSim ?? defaults.defaultDataSim,
+    defaultCallsSim: telephonyOverrides.defaultCallsSim ?? defaults.defaultCallsSim ?? defaults.defaultDataSim,
+    defaultSmsSim: telephonyOverrides.defaultSmsSim ?? defaults.defaultSmsSim ?? defaults.defaultDataSim,
   };
 }
 
@@ -318,6 +323,14 @@ export function setTelephonyOverrides(patch: TelephonyOverrides): void {
   }
   if (patch.defaultDataSim === 1 || patch.defaultDataSim === 2) {
     next.defaultDataSim = patch.defaultDataSim;
+    changed = true;
+  }
+  if (patch.defaultCallsSim === 0 || patch.defaultCallsSim === 1 || patch.defaultCallsSim === 2) {
+    next.defaultCallsSim = patch.defaultCallsSim;
+    changed = true;
+  }
+  if (patch.defaultSmsSim === 0 || patch.defaultSmsSim === 1 || patch.defaultSmsSim === 2) {
+    next.defaultSmsSim = patch.defaultSmsSim;
     changed = true;
   }
   if (!changed) return;
@@ -496,6 +509,85 @@ function genericGetPreference(normalizedKey: string): DeviceSettingValue | undef
       return prefs.fcc_equipment_id ?? 'FCC ID: 2A********';
     case 'micare_expiry_time':
       return prefs.micare_expiry_time ?? '未知';
+    // --- SIM-slot-specific telephony reads ---
+    case 'default_data_sim':
+      return String(telephony.defaultDataSim);
+    case 'default_calls_sim':
+      return String(telephony.defaultCallsSim);
+    case 'default_sms_sim':
+      return String(telephony.defaultSmsSim);
+    case 'network_type_sim1': {
+      const sim = telephony.sims.find((item) => item.slot === 1);
+      return sim ? sim.networkType || '未知' : '无 SIM';
+    }
+    case 'network_type_sim2': {
+      const sim = telephony.sims.find((item) => item.slot === 2);
+      return sim ? sim.networkType || '未知' : '无 SIM';
+    }
+    case 'operator_name_sim2': {
+      const sim = telephony.sims.find((item) => item.slot === 2);
+      return sim ? sim.carrier || '未知运营商' : '无 SIM';
+    }
+    case 'roaming_state_sim2': {
+      const sim = telephony.sims.find((item) => item.slot === 2);
+      return sim ? (sim.dataRoaming ? '已开启' : '已关闭') : '无 SIM';
+    }
+    case 'iccid_sim2': {
+      const sim = telephony.sims.find((item) => item.slot === 2);
+      return sim ? sim.iccid || '未设置' : '无 SIM';
+    }
+    case 'imei_info_sim2':
+      return build.imei2 ?? '未设置';
+    case 'signal_strength':
+      return '良好';
+    case 'service_state':
+      return '服务中';
+    case 'data_roaming_sim1': {
+      const sim = telephony.sims.find((item) => item.slot === 1);
+      return sim ? sim.dataRoaming : false;
+    }
+    case 'data_roaming_sim2': {
+      const sim = telephony.sims.find((item) => item.slot === 2);
+      return sim ? sim.dataRoaming : false;
+    }
+    case 'volte_sim1': {
+      const sim = telephony.sims.find((item) => item.slot === 1);
+      return sim ? sim.voLTE : true;
+    }
+    case 'volte_sim2': {
+      const sim = telephony.sims.find((item) => item.slot === 2);
+      return sim ? sim.voLTE : true;
+    }
+    case 'enabled_5g_sim1': {
+      const sim = telephony.sims.find((item) => item.slot === 1);
+      return sim ? sim.networkType.includes('5G') : false;
+    }
+    case 'mobile_data_enable':
+      return prefs.mobile_data_enable ?? true;
+    case 'wifi_calling_enabled':
+      return prefs.wifi_calling_enabled ?? false;
+    case 'wifi_calling_mode':
+      return prefs.wifi_calling_mode ?? 'wifi_preferred';
+    case 'wifi_calling_roaming_mode':
+      return prefs.wifi_calling_roaming_mode ?? 'wifi_preferred';
+    case 'set_data_warning':
+      return prefs.set_data_warning ?? false;
+    case 'set_data_limit':
+      return prefs.set_data_limit ?? false;
+    case 'data_usage_this_cycle':
+      return prefs.data_usage_this_cycle ?? '3.8 GB';
+    case 'data_usage_remaining':
+      return prefs.data_usage_remaining ?? '6.2 GB';
+    case 'billing_cycle_date':
+      return prefs.billing_cycle_date ?? '每月 1 日';
+    case 'data_warning_level':
+      return prefs.data_warning_level ?? '2 GB';
+    case 'data_limit_level':
+      return prefs.data_limit_level ?? '10 GB';
+    case 'network_select_mode':
+      return prefs.network_select_mode ?? 'auto';
+    case 'preferred_network_mode_key':
+      return prefs.preferred_network_mode_key ?? '27';
     default: {
       const defaultOpenCategory = getDefaultOpenCategory(normalizedKey);
       if (defaultOpenCategory) {
@@ -731,6 +823,81 @@ function genericSetPreference(normalizedKey: string, value: DeviceSettingValue):
       setTelephonyOverrides({ sims });
       return;
     }
+    // --- SIM-slot-specific telephony writes ---
+    case 'default_data_sim': {
+      const val = Number(value);
+      if (val === 1 || val === 2) setTelephonyOverrides({ defaultDataSim: val as 1 | 2 });
+      return;
+    }
+    case 'default_calls_sim': {
+      const val = Number(value);
+      if (val === 0 || val === 1 || val === 2) setTelephonyOverrides({ defaultCallsSim: val as 1 | 2 | 0 });
+      return;
+    }
+    case 'default_sms_sim': {
+      const val = Number(value);
+      if (val === 0 || val === 1 || val === 2) setTelephonyOverrides({ defaultSmsSim: val as 1 | 2 | 0 });
+      return;
+    }
+    case 'data_roaming_sim1':
+    case 'data_roaming_sim2': {
+      const telephony = getEffectiveTelephony();
+      const sims = cloneSims(telephony.sims);
+      const slot = normalizedKey === 'data_roaming_sim2' ? 2 : 1;
+      const idx = sims.findIndex((s) => s.slot === slot);
+      if (idx >= 0) {
+        sims[idx] = { ...sims[idx], dataRoaming: Boolean(value) };
+        setTelephonyOverrides({ sims });
+      }
+      return;
+    }
+    case 'volte_sim1':
+    case 'volte_sim2': {
+      const telephony = getEffectiveTelephony();
+      const sims = cloneSims(telephony.sims);
+      const slot = normalizedKey === 'volte_sim2' ? 2 : 1;
+      const idx = sims.findIndex((s) => s.slot === slot);
+      if (idx >= 0) {
+        sims[idx] = { ...sims[idx], voLTE: Boolean(value) };
+        setTelephonyOverrides({ sims });
+      }
+      return;
+    }
+    case 'enabled_5g_sim1': {
+      const telephony = getEffectiveTelephony();
+      const sims = cloneSims(telephony.sims);
+      const idx = sims.findIndex((s) => s.slot === 1);
+      if (idx >= 0) {
+        sims[idx] = { ...sims[idx], networkType: Boolean(value) ? '5G SA' : '4G' };
+        setTelephonyOverrides({ sims });
+      }
+      return;
+    }
+    case 'erase_esim_confirmed':
+      if (Boolean(value)) {
+        mutateOsState((state) => {
+          state.preferences['erase_esim_confirmed'] = value;
+          state.preferences['esim_travel_profile_present'] = false;
+        });
+      } else {
+        mutateOsState((state) => { state.preferences['erase_esim_confirmed'] = value; });
+      }
+      return;
+    case 'mobile_data_enable':
+    case 'wifi_calling_enabled':
+    case 'wifi_calling_mode':
+    case 'wifi_calling_roaming_mode':
+    case 'set_data_warning':
+    case 'set_data_limit':
+    case 'data_usage_this_cycle':
+    case 'data_usage_remaining':
+    case 'billing_cycle_date':
+    case 'data_warning_level':
+    case 'data_limit_level':
+    case 'network_select_mode':
+    case 'preferred_network_mode_key':
+      mutateOsState((state) => { state.preferences[normalizedKey] = value; });
+      return;
     default: {
       const defaultOpenCategory = getDefaultOpenCategory(normalizedKey);
       if (!defaultOpenCategory) return;

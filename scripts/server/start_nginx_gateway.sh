@@ -39,10 +39,13 @@ find_bin() {
         done
     done
     echo "[error] Cannot find '${names[*]}'. Install it or set ${names[0]^^}_BIN." >&2
-    exit 1
+    return 1
 }
 
-NGINX_BIN="${NGINX_BIN:-$(find_bin nginx)}"
+# Resolve nginx only for startup. `find_bin` is deliberately not embedded in
+# this assignment: a failed command substitution inside a default expansion
+# makes the assignment itself succeed, leaving NGINX_BIN empty.
+NGINX_BIN="${NGINX_BIN:-}"
 NGINX_DIR="$ROOT_DIR/.nginx"
 PIDFILE_API="$ROOT_DIR/.api_gateway.pid"
 NGINX_SOURCE_CONFIG="$ROOT_DIR/.nginx/nginx.source.conf"
@@ -75,9 +78,11 @@ render_nginx_config() {
 stop_servers() {
     echo "[stop] Stopping servers..."
     # Stop Nginx
-    if [ -f "$NGINX_DIR/nginx.pid" ]; then
+    if [ -f "$NGINX_DIR/nginx.pid" ] && [ -n "$NGINX_BIN" ]; then
         "$NGINX_BIN" -s stop -c "$NGINX_DIR/nginx.run.conf" 2>/dev/null
         echo "  nginx stopped"
+    elif [ -f "$NGINX_DIR/nginx.pid" ]; then
+        echo "  nginx not stopped (nginx binary unavailable)" >&2
     fi
     # Stop API backend (kill process group for clean shutdown)
     if [ -f "$PIDFILE_API" ]; then
@@ -90,8 +95,20 @@ stop_servers() {
 }
 
 if [ "$1" = "stop" ]; then
+    # Stopping the API must still work when nginx has been removed. If it is
+    # available, resolve it quietly so a normal `stop` also shuts down nginx.
+    if [ -z "$NGINX_BIN" ]; then
+        NGINX_BIN="$(find_bin nginx 2>/dev/null || true)"
+    fi
     stop_servers
     exit 0
+fi
+
+if [ -z "$NGINX_BIN" ]; then
+    NGINX_BIN="$(find_bin nginx)" || exit 1
+elif [ ! -x "$NGINX_BIN" ]; then
+    echo "[error] NGINX_BIN is not executable: $NGINX_BIN" >&2
+    exit 1
 fi
 
 # Stop any previous instances
@@ -124,8 +141,22 @@ if [ ! -f "$MIME_TYPES" ]; then
 fi
 render_nginx_config
 
+# Validate both launch dependencies before starting either server. This avoids
+# leaving an orphaned API gateway behind when nginx cannot start.
+PYTHON_BIN="${PYTHON_BIN:-}"
+if [ -z "$PYTHON_BIN" ]; then
+    PYTHON_BIN="$(find_bin python python3)" || exit 1
+elif [ ! -x "$PYTHON_BIN" ]; then
+    echo "[error] PYTHON_BIN is not executable: $PYTHON_BIN" >&2
+    exit 1
+fi
+
+if ! "$NGINX_BIN" -t -c "$NGINX_DIR/nginx.run.conf" >/dev/null 2>&1; then
+    echo "[error] Nginx configuration validation failed; see $NGINX_DIR/logs/error.log." >&2
+    exit 1
+fi
+
 # 1. Start API backend (uvicorn multi-worker via conda rllm)
-PYTHON_BIN="${PYTHON_BIN:-$(find_bin python python3)}"
 API_WORKERS=${API_WORKERS:-8}
 echo "[start] API gateway on :${API_PORT} (workers=${API_WORKERS})"
 export PYTHONPATH="$ROOT_DIR${PYTHONPATH:+:$PYTHONPATH}"
@@ -142,7 +173,11 @@ echo $! > "$PIDFILE_API"
 
 # 2. Start Nginx
 echo "[start] Nginx on :${PORT} (workers=8)"
-"$NGINX_BIN" -c "$NGINX_DIR/nginx.run.conf"
+if ! "$NGINX_BIN" -c "$NGINX_DIR/nginx.run.conf"; then
+    echo "[error] Nginx failed to start; stopping API gateway." >&2
+    stop_servers
+    exit 1
+fi
 
 sleep 0.5
 echo ""
